@@ -5,12 +5,12 @@ type EntryUpdate struct {
 	Expiry   int
 	KeyType  int
 	KeyValue interface{}
-	Values   []int
+	Values map[int][]int
 }
 
 type Entry struct {
-	Key    interface{}
-	Values []int
+	Key interface{}
+	Values map[int][]int
 }
 
 type TableValue interface{}
@@ -21,9 +21,9 @@ type TableDefinition struct {
 	Name         string
 	KeyType      int
 	KeyLen       int
-	DataType     int
-	Expiry       int
-	Frequency    [][]int
+	DataTypes []int
+	Expiry    int
+	Frequency [][]int
 }
 type TableKeyType int
 type DataType int

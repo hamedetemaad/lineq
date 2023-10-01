@@ -189,62 +189,60 @@ func (client *Client) readEntryUpdate() {
 		return
 	}
 
-	values := make([]int, 0)
-	fmt.Println("DataType ", tableDefinition.DataType)
-	switch tableDefinition.DataType {
-	case SERVER_ID:
-		consumed, server_id, _ := decode(client.buffer[client.pointer:])
-		values = append(values, server_id)
-		client.pointer += consumed
-
-		consumed, x, _ := decode(client.buffer[client.pointer:])
-		values = append(values, x)
-		client.pointer += consumed
-
-		consumed, y, _ := decode(client.buffer[client.pointer:])
-		values = append(values, y)
-		client.pointer += consumed
-
-		consumed, nameLen, _ := decode(client.buffer[client.pointer:])
-		values = append(values, nameLen)
-		client.pointer += consumed
-
-		server_key := make([]byte, nameLen)
-
-		for i := 0; i < nameLen; i++ {
-			consumed, char, _ := decode(client.buffer[client.pointer:])
-			values = append(values, char)
-			server_key[i] = byte(char)
+	values := make(map[int][]int)
+	for i := 0; i < len(tableDefinition.DataTypes); i++ {
+		fmt.Println("DataType[...]", tableDefinition.DataTypes[i])
+		switch tableDefinition.DataTypes[i] {
+		case SERVER_ID:
+			consumed, server_id, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], server_id)
 			client.pointer += consumed
+
+			consumed, x, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], x)
+			client.pointer += consumed
+
+			consumed, y, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], y)
+			client.pointer += consumed
+
+			consumed, nameLen, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], nameLen)
+			client.pointer += consumed
+
+			for i := 0; i < nameLen; i++ {
+				consumed, char, _ := decode(client.buffer[client.pointer:])
+				values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], char)
+				client.pointer += consumed
+			}
+		case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
+			consumed, number, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = []int{number}
+			client.pointer += consumed
+		case HTTP_REQ_RATE:
+			consumed, curr_tick, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], curr_tick)
+			client.pointer += consumed
+			fmt.Println("cur tick", curr_tick)
+
+			consumed, curr_ctr, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], curr_ctr)
+			client.pointer += consumed
+			fmt.Println("req rate", curr_ctr)
+
+			consumed, prev_ctr, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], prev_ctr)
+			client.pointer += consumed
+			fmt.Println("prev ctr", prev_ctr)
+		case BYTES_IN_CNT, BYTES_OUT_CNT:
+			consumed, number, _ := decode(client.buffer[client.pointer:])
+			values[tableDefinition.DataTypes[i]] = []int{number}
+			client.pointer += consumed
+		default:
+			fmt.Println("error values")
 		}
-
-		fmt.Println("*******", string(server_key))
-	case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
-		consumed, number, _ := decode(client.buffer[client.pointer:])
-		values = append(values, number)
-		client.pointer += consumed
-	case HTTP_REQ_RATE:
-		consumed, curr_tick, _ := decode(client.buffer[client.pointer:])
-		values = append(values, curr_tick)
-		client.pointer += consumed
-		fmt.Println("cur tick", curr_tick)
-
-		consumed, curr_ctr, _ := decode(client.buffer[client.pointer:])
-		values = append(values, curr_ctr)
-		client.pointer += consumed
-		fmt.Println("req rate", curr_ctr)
-
-		consumed, prev_ctr, _ := decode(client.buffer[client.pointer:])
-		values = append(values, prev_ctr)
-		client.pointer += consumed
-		fmt.Println("prev ctr", prev_ctr)
-	case BYTES_IN_CNT, BYTES_OUT_CNT:
-		consumed, number, _ := decode(client.buffer[client.pointer:])
-		values = append(values, number)
-		client.pointer += consumed
-	default:
-		fmt.Println("error values")
 	}
+
 
 	updateEntry := EntryUpdate{
 		UpdateID: updateId,
@@ -388,12 +386,11 @@ func (client *Client) readTableDefinition() {
 	types := [19]int{SERVER_ID, GPT0, GPC0, GPC0_RATE, CONN_CNT, CONN_RATE, CONN_CUR, SESS_CNT, SESS_RATE, HTTP_REQ_CNT,
 		HTTP_REQ_RATE, HTTP_ERR_CNT, HTTP_ERR_RATE, BYTES_IN_CNT, BYTES_IN_RATE, BYTES_OUT_CNT, BYTES_OUT_RATE, GPC1, GPC1_RATE}
 
-	var dType int
+	dTypes := []int{}
 
 	for i := 0; i < len(types); i++ {
 		if ((dataType >> types[i]) & 1) != 0 {
-			dType = types[i]
-			break
+			dTypes = append(dTypes, types[i])
 		}
 	}
 
@@ -402,16 +399,19 @@ func (client *Client) readTableDefinition() {
 		Name:         name,
 		KeyType:      keyType,
 		KeyLen:       keyLen,
-		DataType:     dType,
-		Expiry:       expiry,
-		Frequency:    frequency,
+		DataTypes: dTypes,
+		Expiry:    expiry,
+		Frequency: frequency,
 	}
 
 	fmt.Println("StickTableId ", tableDefinition.StickTableID)
 	fmt.Println("Name ", tableDefinition.Name)
 	fmt.Println("KeyType ", tableDefinition.KeyType)
 	fmt.Println("KeyLen ", tableDefinition.KeyLen)
+	fmt.Println("DataTypes ", tableDefinition.DataTypes)
 	fmt.Println("Expiry ", tableDefinition.Expiry)
+	fmt.Println("Frequency ", tableDefinition.Frequency)
+
 	client.lastTableDefinition = tableDefinition
 
 	if _, exists := client.tables[name]; !exists {
@@ -427,6 +427,7 @@ func (client *Client) readTableDefinition() {
 
 func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 	tableDefinition := client.lastTableDefinition
+
 	name := tableDefinition.Name
 	entry := Entry{
 		Key:    entryUpdate.KeyValue,
@@ -476,39 +477,45 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 			Key: entryUpdate.KeyValue,
 		}
 
-		dataType := tableDefinition.DataType
-		switch dataType {
-		case SERVER_ID:
-			globEntry.Values = make([]int, 0)
-		case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
-			globEntry.Values = make([]int, 1)
-		case HTTP_REQ_RATE:
-			globEntry.Values = make([]int, 3)
-		case BYTES_IN_CNT, BYTES_OUT_CNT:
-			globEntry.Values = make([]int, 1)
-		default:
-			fmt.Println("error values")
+		for i := 0; i < len(tableDefinition.DataTypes); i++ {
+			dataType := tableDefinition.DataTypes[i]
+			switch dataType {
+			case SERVER_ID:
+				globEntry.Values[dataType] = make([]int, 0)
+			case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
+				globEntry.Values[dataType] = make([]int, 1)
+			case HTTP_REQ_RATE:
+				globEntry.Values[dataType] = make([]int, 3)
+			case BYTES_IN_CNT, BYTES_OUT_CNT:
+				globEntry.Values[dataType] = make([]int, 1)
+			default:
+				fmt.Println("error values")
+			}
 		}
 
-		for i := 0; i < len(peers); i++ {
-			if locTable, exists := peers[i].tables[name]; exists {
-				if locEnt, exists := locTable.entries[keyEnc]; exists {
-					switch dataType {
-					case SERVER_ID:
-					case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
-						globEntry.Values[0] += locEnt.Values[0]
-					case HTTP_REQ_RATE:
-						globEntry.Values[0] += locEnt.Values[0]
-						globEntry.Values[1] += locEnt.Values[1]
-						globEntry.Values[2] += locEnt.Values[2]
-					case BYTES_IN_CNT, BYTES_OUT_CNT:
-						globEntry.Values[0] += locEnt.Values[0]
-					default:
-						fmt.Println("error values")
+		for i := 0; i < len(tableDefinition.DataTypes); i++ {
+			for i := 0; i < len(peers); i++ {
+				if locTable, exists := peers[i].tables[name]; exists {
+					if locEnt, exists := locTable.entries[keyEnc]; exists {
+						dType := tableDefinition.DataTypes[i]
+						switch dType {
+						case SERVER_ID:
+						case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
+							globEntry.Values[dType][0] += locEnt.Values[dType][0]
+						case HTTP_REQ_RATE:
+							globEntry.Values[dType][0] += locEnt.Values[dType][0]
+							globEntry.Values[dType][1] += locEnt.Values[dType][1]
+							globEntry.Values[dType][2] += locEnt.Values[dType][2]
+						case BYTES_IN_CNT, BYTES_OUT_CNT:
+							globEntry.Values[dType][0] += locEnt.Values[dType][0]
+						default:
+							fmt.Println("error values")
+						}
 					}
 				}
 			}
 		}
+
 		globTable.entries[keyEnc] = globEntry
 		tables[name] = globTable
 	}
@@ -526,8 +533,12 @@ func (client *Client) createTableDefinition(tableDefinition TableDefinition) []b
 	message = append(message, keyType...)
 	keyLen := encode(tableDefinition.KeyLen)
 	message = append(message, keyLen...)
+
 	dataType := 0
-	dataType = dataType | (1 << tableDefinition.DataType)
+
+	for i := 0; i < len(tableDefinition.DataTypes); i++ {
+		dataType = dataType | (1 << tableDefinition.DataTypes[i])
+	}
 
 	dataTypeBitFieald := encode(dataType)
 	message = append(message, dataTypeBitFieald...)
@@ -581,33 +592,37 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 		return nil
 	}
 
-	dataType := tableDef.DataType
-	switch dataType {
-	case SERVER_ID:
-		message = append(message, encode(entry.Values[0])...)
-		message = append(message, encode(entry.Values[1])...)
-		message = append(message, encode(entry.Values[2])...)
-		message = append(message, encode(entry.Values[3])...)
+	for i := 0; i < len(tableDef.DataTypes); i++ {
+		dataType := tableDef.DataTypes[i]
+		switch dataType {
+		case SERVER_ID:
+			message = append(message, encode(entry.Values[dataType][0])...)
+			message = append(message, encode(entry.Values[dataType][1])...)
+			message = append(message, encode(entry.Values[dataType][2])...)
+			message = append(message, encode(entry.Values[dataType][3])...)
 
-		for i := 0; i < entry.Values[3]; i++ {
-			message = append(message, encode(entry.Values[4+i])...)
+			for i := 0; i < entry.Values[dataType][3]; i++ {
+				message = append(message, encode(entry.Values[dataType][4+i])...)
+			}
+		case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
+			message = append(message, encode(entry.Values[dataType][0])...)
+		case HTTP_REQ_RATE:
+			cur_tick := encode(entry.Values[dataType][0])
+			fmt.Println(entry.Values[dataType][0])
+			message = append(message, cur_tick...)
+
+			cur_ctr := encode(entry.Values[dataType][1])
+			fmt.Println(entry.Values[dataType][1])
+			message = append(message, cur_ctr...)
+
+			prev_ctr := encode(entry.Values[dataType][2])
+			fmt.Println(entry.Values[dataType][2])
+			message = append(message, prev_ctr...)
+		case BYTES_IN_CNT, BYTES_OUT_CNT:
+		default:
+			fmt.Println("unknown type")
 		}
-	case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
-		message = append(message, encode(entry.Values[0])...)
-	case HTTP_REQ_RATE:
-		cur_tick := encode(entry.Values[0])
-		message = append(message, cur_tick...)
-
-		cur_ctr := encode(entry.Values[1])
-		message = append(message, cur_ctr...)
-
-		prev_ctr := encode(entry.Values[2])
-		message = append(message, prev_ctr...)
-	case BYTES_IN_CNT, BYTES_OUT_CNT:
-	default:
-		fmt.Println("unknown type")
 	}
-
 	return message
 }
 

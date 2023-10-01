@@ -63,7 +63,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func parseEntry(id string, entry Entry, keyType string, dataType int) map[string]interface{} {
+func parseEntry(id string, entry Entry, keyType string, dataType []int) map[string]interface{} {
 	jsonEntry := make(map[string]interface{})
 	jsonEntry["id"] = id
 	switch keyType {
@@ -88,20 +88,24 @@ func parseEntry(id string, entry Entry, keyType string, dataType int) map[string
 		}
 	}
 
-	switch dataType {
-	case SERVER_ID:
-		jsonEntry["value"] = entry.Values[0]
-	case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
-		jsonEntry["value"] = entry.Values[0]
-	case HTTP_REQ_RATE:
-		jsonEntry["value"] = entry.Values[1]
-	case BYTES_IN_CNT, BYTES_OUT_CNT:
+	dataValues := ""
+	for i := 0; i < len(dataType); i++ {
+		switch dataType[i] {
+		case SERVER_ID:
+			dataValues += fmt.Sprintf("%d\t", entry.Values[dataType[i]][0])
+		case GPT0, GPC0, CONN_CNT, CONN_CUR, SESS_CNT, HTTP_REQ_CNT, HTTP_ERR_CNT, GPC1:
+			dataValues += fmt.Sprintf("%d\t", entry.Values[dataType[i]][0])
+		case HTTP_REQ_RATE:
+			dataValues += fmt.Sprintf("%d\t", entry.Values[dataType[i]][1])
+		case BYTES_IN_CNT, BYTES_OUT_CNT:
+		}
 	}
+	jsonEntry["value"] = dataValues
 
 	return jsonEntry
 }
 
-func parseEntries(entries map[string]Entry, keyType string, dataType int) []interface{} {
+func parseEntries(entries map[string]Entry, keyType string, dataType []int) []interface{} {
 	var jsonEntries []interface{}
 	for key := range entries {
 		jsonEntries = append(jsonEntries, parseEntry(key, entries[key], keyType, dataType))
@@ -128,14 +132,51 @@ func getKeyType(tableKeyType int) string {
 	return keyType
 }
 
+func getValueTypes(vTypes []int) string {
+	values := ""
+
+	for i := 0; i < len(vTypes); i++ {
+		switch vTypes[i] {
+		case SERVER_ID:
+			values += "server_id  "
+		case GPT0:
+			values += "gpt0  "
+		case GPC0:
+			values += "gpc0  "
+		case CONN_CNT:
+			values += "conn_cnt  "
+		case CONN_CUR:
+			values += "conn_cur  "
+		case SESS_CNT:
+			values += "sess_cnt  "
+		case HTTP_REQ_CNT:
+			values += "http_req_cnt  "
+		case HTTP_ERR_CNT:
+			values += "http_err_cnt  "
+		case GPC1:
+			values += "gpc1  "
+		case HTTP_REQ_RATE:
+			values += "http_req_rate  "
+		case BYTES_IN_CNT:
+			values += "bytes_in_cnt  "
+		case BYTES_OUT_CNT:
+			values += "bytes_out_cnt  "
+		}
+	}
+
+	return values
+}
+
 func parseTable(table Table) map[string]interface{} {
 	jsonTable := make(map[string]interface{})
 	tableDef := table.definition
-	dataType := tableDef.DataType
+	dataType := tableDef.DataTypes
 	jsonTable["expiry"] = tableDef.Expiry
 
 	keyType := getKeyType(tableDef.KeyType)
 	jsonTable["type"] = keyType
+	vTypes := getValueTypes(tableDef.DataTypes)
+	jsonTable["vtypes"] = vTypes
 	jsonTable["entries"] = parseEntries(table.entries, keyType, dataType)
 	return jsonTable
 }
@@ -166,7 +207,7 @@ func sendTableUpdate(tableName string, id string) {
 	table := tables[tableName]
 	tableDef := table.definition
 	entries := table.entries
-	dataType := tableDef.DataType
+	dataType := tableDef.DataTypes
 	keyType := getKeyType(tableDef.KeyType)
 
 	tableInfo := make(map[string]interface{})
