@@ -666,9 +666,9 @@ func (client *Client) sendUpdate(tableDef []byte, entryDef []byte, local bool) {
 	}
 }
 
-func (client *Client) updatePeers(keyType int, keyValue interface{}, keyEnc string) {
-	tableDef := client.createTableDefinition(client.lastTableDefinition)
-	entryDef := client.createEntryUpdate(client.lastTableDefinition, keyType, keyValue, keyEnc)
+func (client *Client) updatePeers(table TableDefinition, keyType int, keyValue interface{}, keyEnc string) {
+	tableDef := client.createTableDefinition(table)
+	entryDef := client.createEntryUpdate(table, keyType, keyValue, keyEnc)
 
 	client.sendUpdate(tableDef, entryDef, false)
 }
