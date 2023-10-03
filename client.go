@@ -17,6 +17,9 @@ type Client struct {
 	pointer             int
 	mode                string
 	tables              map[string]Table
+	roomTable           string
+	usersTable          string
+	skip                bool
 }
 
 func (client *Client) sendHeartBeat() {
@@ -29,8 +32,10 @@ func (client *Client) sendStatus(remoteId string) {
 	client.conn.Write([]byte(SUCCEEDED + "\n"))
 }
 
-func (client *Client) initConnection(name string, mode string, auto_sync bool) {
+func (client *Client) initConnection(name string, mode string, vwr_session_duration int, vwr_active_users int, roomTable string, usersTable string) {
 	client.mode = mode
+	client.roomTable = roomTable
+	client.usersTable = usersTable
 	message, err := client.reader.ReadString('\n')
 	if err != nil {
 		client.conn.Close()
@@ -164,6 +169,13 @@ func (client *Client) readEntryUpdate() {
 	updateId := binary.BigEndian.Uint32(client.buffer[client.pointer : client.pointer+4])
 	client.pointer += 4
 
+	if client.skip {
+		client.skip = false
+		client.pointer += (end - client.pointer)
+		client.sendUpdateAck(tables[client.roomTable].definition, updateId)
+		return
+	}
+
 	tableDefinition := client.lastTableDefinition
 
 	var keyType int
@@ -243,7 +255,6 @@ func (client *Client) readEntryUpdate() {
 		}
 	}
 
-
 	updateEntry := EntryUpdate{
 		UpdateID: updateId,
 		Expiry:   0,
@@ -263,8 +274,8 @@ func (client *Client) readEntryUpdate() {
 	keyEnc := client.updateTable(updateEntry)
 	client.sendUpdateAck(client.lastTableDefinition, updateId)
 
-	if client.mode == "agg" {
-		client.updatePeers(updateEntry.KeyType, updateEntry.KeyValue, keyEnc)
+	if client.mode == "agg" || client.mode == "vwr" {
+		client.updatePeers(client.lastTableDefinition, updateEntry.KeyType, updateEntry.KeyValue, keyEnc)
 	}
 	sendTableUpdate(tableDefinition.Name, keyEnc)
 }
@@ -336,6 +347,12 @@ func (client *Client) readTableDefinition() {
 	name := string(client.buffer[client.pointer : client.pointer+nameLength])
 	client.pointer += nameLength
 
+	if client.mode == "vwr" && name == client.roomTable {
+		client.pointer += (end - client.pointer)
+		client.skip = true
+		return
+	}
+
 	consumed, keyType, _ := decode(client.buffer[client.pointer:])
 	client.pointer += consumed
 
@@ -399,9 +416,9 @@ func (client *Client) readTableDefinition() {
 		Name:         name,
 		KeyType:      keyType,
 		KeyLen:       keyLen,
-		DataTypes: dTypes,
-		Expiry:    expiry,
-		Frequency: frequency,
+		DataTypes:    dTypes,
+		Expiry:       expiry,
+		Frequency:    frequency,
 	}
 
 	fmt.Println("StickTableId ", tableDefinition.StickTableID)
@@ -467,6 +484,31 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 
 	if client.mode == "agg" {
 		tables[name] = table
+	} else if client.mode == "vwr" {
+		if name == client.usersTable {
+			curStat := entry.Values[GPC1][0]
+			if curStat == 1 {
+				prevEntry, exists := tables[name].entries[keyEnc]
+				if !exists || (prevEntry.Values[GPC1][0] == 0) {
+					var roomKey []byte = s32tob(1)
+					roomJson, _ := json.Marshal(&roomKey)
+					roomEnc := b64.StdEncoding.EncodeToString(roomJson)
+
+					tables[name].entries[keyEnc] = entry
+					tables[client.roomTable].entries[roomEnc].Values[GPC0][0] -= 1
+					client.updatePeers(tables[client.roomTable].definition, tables[client.roomTable].definition.KeyType, int32(1), roomEnc)
+					cache.Set(keyEnc, []byte{})
+					sendTableUpdate(client.roomTable, roomEnc)
+				} else {
+					cache.Set(keyEnc, []byte{})
+				}
+			} else {
+				if _, exists := tables[name].entries[keyEnc]; !exists {
+					tables[name].entries[keyEnc] = entry
+					sortedEntries = append(sortedEntries, keyEnc)
+				}
+			}
+		}
 	} else if client.mode == "acc" {
 		globTable := tables[name]
 		if globTable.entries == nil {

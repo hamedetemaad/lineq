@@ -1,13 +1,16 @@
 package main
 
 const (
-	DEFAULT_TCP_HOST  = "localhost"
-	DEFAULT_WEB_HOST  = "localhost"
-	DEFAULT_TCP_PORT  = "11111"
-	DEFAULT_WEB_PORT  = "8060"
-	DEFAULT_NAME      = "aggr1"
-	DEFAULT_MODE      = "agg" // or acc
-	DEFAULT_AUTO_SYNC = "false"
+	DEFAULT_TCP_HOST             = "localhost"
+	DEFAULT_WEB_HOST             = "localhost"
+	DEFAULT_TCP_PORT             = "11111"
+	DEFAULT_WEB_PORT             = "8060"
+	DEFAULT_NAME                 = "aggr1"
+	DEFAULT_MODE                 = "vwr" // agg or acc or vwr
+	DEFAULT_VWR_SESSION_DURATION = "1"
+	DEFAULT_VWR_TOTAL_USERS      = "1"
+	DEFAULT_VWR_ROOM_TABLE       = "room"
+	DEFAULT_VWR_USERS_TABLE      = "timestamps"
 )
 
 const (
