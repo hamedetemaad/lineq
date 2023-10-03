@@ -62,6 +62,7 @@ func (client *Client) initConnection(name string, mode string, vwr_session_durat
 			client.sendStatus(remoteId)
 			//go client.sendHeartBeat()
 			client.tables = make(map[string]Table)
+			auto_sync := false
 			if auto_sync {
 				client.conn.Write([]byte{CLASS_CONTROL, SYNCHRONIZATION_REQUEST})
 			}
