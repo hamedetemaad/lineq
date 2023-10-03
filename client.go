@@ -570,7 +570,10 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 	switch keyType {
 	case SINT:
 		if value, ok := keyValue.(int32); ok {
-			message = append(message, s32tob(value)...)
+			val := uint32(value)
+			result := make([]byte, 4)
+			binary.BigEndian.PutUint32(result, val)
+			message = append(message, result...)
 		} else {
 			fmt.Println("Conversion to int32 failed.")
 			return nil
