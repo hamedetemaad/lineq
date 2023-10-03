@@ -419,6 +419,7 @@ func (client *Client) readTableDefinition() {
 			localUpdateId: 0,
 			definition:    tableDefinition,
 		}
+		table.entries = make(map[string]Entry)
 		client.tables[name] = table
 	}
 
