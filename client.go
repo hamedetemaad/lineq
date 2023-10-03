@@ -486,27 +486,27 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 	if client.mode == "agg" {
 		tables[name] = table
 	} else if client.mode == "vwr" {
-		if name == client.usersTable {
+		if _, uTable := client.usersTable[name]; uTable {
 			curStat := entry.Values[GPC1][0]
 			if curStat == 1 {
 				prevEntry, exists := tables[name].entries[keyEnc]
 				if !exists || (prevEntry.Values[GPC1][0] == 0) {
-					var roomKey []byte = s32tob(1)
+					var roomKey []byte = []byte(name)
 					roomJson, _ := json.Marshal(&roomKey)
 					roomEnc := b64.StdEncoding.EncodeToString(roomJson)
 
 					tables[name].entries[keyEnc] = entry
 					tables[client.roomTable].entries[roomEnc].Values[GPC0][0] -= 1
-					client.updatePeers(tables[client.roomTable].definition, tables[client.roomTable].definition.KeyType, int32(1), roomEnc)
-					cache.Set(keyEnc, []byte{})
+					client.updatePeers(tables[client.roomTable].definition, tables[client.roomTable].definition.KeyType, name, roomEnc)
+					cache.Set(keyEnc, []byte(name))
 					sendTableUpdate(client.roomTable, roomEnc)
 				} else {
-					cache.Set(keyEnc, []byte{})
+					cache.Set(keyEnc, []byte(name))
 				}
 			} else {
 				if _, exists := tables[name].entries[keyEnc]; !exists {
 					tables[name].entries[keyEnc] = entry
-					sortedEntries = append(sortedEntries, keyEnc)
+					sortedEntries[name] = append(sortedEntries[name], keyEnc)
 				}
 			}
 		}
