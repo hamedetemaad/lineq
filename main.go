@@ -13,6 +13,7 @@ import (
 )
 
 var peers []*Client
+var sortedEntries map[string][]string
 var tables = make(map[string]Table)
 
 type Config struct {
@@ -110,8 +111,12 @@ func main() {
 	}
 
 	if service_mode == "vwr" {
-		initRoomTable(vwr_total_users, service_vwr_room_table)
-		go initCache(vwr_session_duration, vwr_total_users, service_vwr_room_table, service_vwr_users_table)
+		if len(config.VWR_ROUTES) == 0 {
+			fmt.Println("routes is empty")
+			return
+		}
+
+		initRoomTable(config.VWR_ROUTES, service_vwr_room_table)
 	}
 
 	defer listen.Close()
@@ -131,37 +136,38 @@ func main() {
 	}
 }
 
-func initRoomTable(vwr_total_users int, roomName string) {
+func initRoomTable(routes map[string]Route, roomName string) {
 	frequency := [][]int{}
 	dType := []int{GPC0}
 	tableDefinition := TableDefinition{
 		StickTableID: 777,
 		Name:         roomName,
-		KeyType:      SINT,
-		KeyLen:       4,
+		KeyType:      STRING,
+		KeyLen:       32,
 		DataTypes:    dType,
 		Expiry:       24 * 60 * 60 * 1000,
 		Frequency:    frequency,
 	}
 
-	roomTable := Table{
-		localUpdateId: 0,
-		definition:    tableDefinition,
+	for name, route := range routes {
+		roomTable := Table{
+			localUpdateId: 0,
+			definition:    tableDefinition,
+		}
+
+		var key []byte = []byte(name)
+
+		jsonKey, _ := json.Marshal(&key)
+		keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
+
+		roomTable.entries = make(map[string]Entry)
+		roomEntry := Entry{
+			Key: name,
+		}
+		roomEntry.Values = make(map[int][]int)
+		roomEntry.Values[GPC0] = []int{route.TOTAL_ACTIVE_USERS}
+		roomTable.entries[keyEnc] = roomEntry
+		tables[roomName] = roomTable
+		sortedEntries[name] = make([]string, 0)
 	}
-
-	var key []byte = s32tob(1)
-
-	jsonKey, _ := json.Marshal(&key)
-	keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
-
-	roomTable.entries = make(map[string]Entry)
-	var entryKey int32 = 1
-	roomEntry := Entry{
-		Key: entryKey,
-	}
-	roomEntry.Values = make(map[int][]int)
-	roomEntry.Values[GPC0] = []int{vwr_total_users}
-	roomTable.entries[keyEnc] = roomEntry
-	tables[roomName] = roomTable
-	sortedEntries = make([]string, 0)
 }
