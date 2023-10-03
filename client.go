@@ -452,18 +452,17 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 	jsonKey, _ := json.Marshal(&key)
 	keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
 
-	if table.entries == nil {
-		table.entries = make(map[string]Entry)
-	}
 	table.entries[keyEnc] = entry
 
 	client.tables[name] = table
 
 	if _, exists := tables[name]; !exists {
-		tables[name] = Table{
+		tmp := Table{
 			localUpdateId: 0,
 			definition:    tableDefinition,
 		}
+		tmp.entries = make(map[string]Entry)
+		tables[name] = tmp
 	}
 
 	if client.mode == "agg" {
