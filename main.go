@@ -117,6 +117,7 @@ func main() {
 		}
 
 		initRoomTable(config.VWR_ROUTES, service_vwr_room_table)
+		go initCache(vwr_session_duration, config.VWR_ROUTES, service_vwr_room_table)
 	}
 
 	defer listen.Close()
