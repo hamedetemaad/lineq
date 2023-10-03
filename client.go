@@ -277,7 +277,9 @@ func (client *Client) sendUpdateAck(uId uint32) {
 	header := []byte{CLASS_UPDATE, UPDATE_ACK}
 	encodedTableId := encode(tableDefinition.StickTableID)
 
-	updateId := u32tob(uId)
+	updateId := make([]byte, 4)
+	binary.BigEndian.PutUint32(updateId, uId)
+
 	data := append(encodedTableId, updateId...)
 	length := encode(len(data))
 	message = append(header, length...)
@@ -560,7 +562,9 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 	table := tables[tableName]
 	table.localUpdateId += 1
 	entry := table.entries[keyEnc]
-	localUpdateId := u32tob(table.localUpdateId)
+
+	localUpdateId := make([]byte, 4)
+	binary.BigEndian.PutUint32(localUpdateId, table.localUpdateId)
 	message = append(message, localUpdateId...)
 
 	switch keyType {
