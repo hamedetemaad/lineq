@@ -18,7 +18,7 @@ type Client struct {
 	mode                string
 	tables              map[string]Table
 	roomTable           string
-	usersTable          string
+	usersTable          map[string]Route
 	skip                bool
 }
 
@@ -32,10 +32,10 @@ func (client *Client) sendStatus(remoteId string) {
 	client.conn.Write([]byte(SUCCEEDED + "\n"))
 }
 
-func (client *Client) initConnection(name string, mode string, vwr_session_duration int, vwr_active_users int, roomTable string, usersTable string) {
+func (client *Client) initConnection(name string, mode string, vwr_session_duration int, roomTable string, routes map[string]Route) {
 	client.mode = mode
 	client.roomTable = roomTable
-	client.usersTable = usersTable
+	client.usersTable = routes
 	message, err := client.reader.ReadString('\n')
 	if err != nil {
 		client.conn.Close()
