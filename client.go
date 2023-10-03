@@ -561,6 +561,7 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 	table.localUpdateId += 1
 	entry := table.entries[keyEnc]
 
+	tables[tableName] = table
 	localUpdateId := make([]byte, 4)
 	binary.BigEndian.PutUint32(localUpdateId, table.localUpdateId)
 	message = append(message, localUpdateId...)
