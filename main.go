@@ -5,15 +5,68 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
+	"reflect"
 
 	b64 "encoding/base64"
 	"encoding/json"
+	"fmt"
 )
 
 var peers []*Client
-var sortedEntries []string
 var tables = make(map[string]Table)
+
+type Config struct {
+	TCP_HOST                string           `json:"tcp_host" default:"localhost"`
+	WEB_HOST                string           `json:"web_host" default:"localhost"`
+	TCP_PORT                string           `json:"tcp_port" default:"11111"`
+	WEB_PORT                string           `json:"web_port" default:"8060"`
+	SERVICE_NAME            string           `json:"service_name" default:"lineQ"`
+	SERVICE_MODE            string           `json:"service_mode" default:"agg"`
+	VWR_ROOM_TABLE          string           `json:"vwr_room_table" default:"room"`
+	VWR_INACTIVITY_DURATION int              `json:"vwr_inactivity_duration"`
+	VWR_ROUTES              map[string]Route `json:"routes"`
+}
+
+type Route struct {
+	TOTAL_ACTIVE_USERS int    `json:"vwr_active_users"`
+	PATH               string `json:"vwr_users_path"`
+}
+
+func setDefaults(config *Config) {
+	valueType := reflect.ValueOf(config)
+	valueTypeKind := valueType.Kind()
+
+	if valueTypeKind != reflect.Ptr || valueType.Elem().Kind() != reflect.Struct {
+		fmt.Println("Input must be a pointer to a struct")
+		return
+	}
+
+	valueType = valueType.Elem()
+	valueTypeType := valueType.Type()
+
+	for i := 0; i < valueType.NumField(); i++ {
+		field := valueType.Field(i)
+		fieldType := valueTypeType.Field(i)
+		fmt.Println(fieldType)
+
+		if field.IsZero() {
+			defaultValueTag := fieldType.Tag.Get("default")
+
+			if defaultValueTag != "" {
+				switch field.Kind() {
+				case reflect.Int:
+					defaultIntValue := reflect.ValueOf(defaultValueTag).Convert(field.Type())
+					field.Set(defaultIntValue)
+				case reflect.String:
+					field.SetString(defaultValueTag)
+				case reflect.Bool:
+					defaultBoolValue := defaultValueTag == "true" || defaultValueTag == "1"
+					field.SetBool(defaultBoolValue)
+				}
+			}
+		}
+	}
+}
 
 func getenv(key, fallback string) string {
 	value := os.Getenv(key)
@@ -24,19 +77,30 @@ func getenv(key, fallback string) string {
 }
 
 func main() {
+	configFile, err := os.Open("/etc/lineq/lineq.cfg")
+	if err != nil {
+		fmt.Println("Error opening configuration file:", err)
+		return
+	}
+	defer configFile.Close()
 
-	service_tcp_host := getenv("SERVICE_TCP_HOST", DEFAULT_TCP_HOST)
-	service_tcp_port := getenv("SERVICE_TCP_PORT", DEFAULT_TCP_PORT)
-	service_web_host := getenv("SERVICE_WEB_HOST", DEFAULT_WEB_HOST)
-	service_web_port := getenv("SERVICE_WEB_PORT", DEFAULT_WEB_PORT)
-	service_mode := getenv("SERVICE_MODE", DEFAULT_MODE)
-	service_name := getenv("SERVICE_NAME", DEFAULT_NAME) // agg(Aggregation) or acc(Accumulation)
-	service_vwr_session_duration := getenv("SERVICE_VWR_SESSION_DURATION", DEFAULT_VWR_SESSION_DURATION)
-	service_vwr_total_users := getenv("SERVICE_VWR_TOTAL_ACTIVE_USERS", DEFAULT_VWR_TOTAL_USERS)
-	service_vwr_room_table := getenv("SERVICE_VWR_ROOM_TABLE", DEFAULT_VWR_ROOM_TABLE)
-	service_vwr_users_table := getenv("SERVICE_VWR_USERS_TABLE", DEFAULT_VWR_USERS_TABLE)
-	vwr_session_duration, _ := strconv.Atoi(service_vwr_session_duration)
-	vwr_total_users, _ := strconv.Atoi(service_vwr_total_users)
+	var config Config
+	decoder := json.NewDecoder(configFile)
+	if err := decoder.Decode(&config); err != nil {
+		fmt.Println("Error decoding configuration:", err)
+		return
+	}
+
+	setDefaults(&config)
+
+	service_mode := config.SERVICE_MODE
+	service_vwr_room_table := config.VWR_ROOM_TABLE
+	service_tcp_host := config.TCP_HOST
+	service_tcp_port := config.TCP_PORT
+	service_web_host := config.WEB_HOST
+	service_web_port := config.WEB_PORT
+	service_name := config.SERVICE_NAME
+	vwr_session_duration := config.VWR_INACTIVITY_DURATION
 
 	go initWebServer(service_web_host, service_web_port)
 	listen, err := net.Listen("tcp", service_tcp_host+":"+service_tcp_port)
