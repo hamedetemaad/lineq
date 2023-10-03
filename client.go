@@ -261,18 +261,16 @@ func (client *Client) readEntryUpdate() {
 	fmt.Println("Pointer ", client.pointer)
 	fmt.Println("End ", end)
 	keyEnc := client.updateTable(updateEntry)
+	client.sendUpdateAck(client.lastTableDefinition, updateId)
 
-	client.sendUpdateAck(updateId)
 	if client.mode == "agg" {
 		client.updatePeers(updateEntry.KeyType, updateEntry.KeyValue, keyEnc)
 	}
 	sendTableUpdate(tableDefinition.Name, keyEnc)
 }
 
-func (client *Client) sendUpdateAck(uId uint32) {
+func (client *Client) sendUpdateAck(tableDefinition TableDefinition, uId uint32) {
 	message := make([]byte, 0)
-
-	tableDefinition := client.lastTableDefinition
 
 	header := []byte{CLASS_UPDATE, UPDATE_ACK}
 	encodedTableId := encode(tableDefinition.StickTableID)
