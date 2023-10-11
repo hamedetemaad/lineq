@@ -24,6 +24,7 @@ func getenv(key, fallback string) string {
 }
 
 func main() {
+	initLogger()
 
 	service_tcp_host := getenv("SERVICE_TCP_HOST", DEFAULT_TCP_HOST)
 	service_tcp_port := getenv("SERVICE_TCP_PORT", DEFAULT_TCP_PORT)
@@ -100,4 +101,9 @@ func initRoomTable(vwr_total_users int, roomName string) {
 	roomTable.entries[keyEnc] = roomEntry
 	tables[roomName] = roomTable
 	sortedEntries = make([]string, 0)
+}
+
+func initLogger() {
+	log.SetFlags(log.Ldate | log.Ltime)
+	log.SetPrefix("lineQ   ")
 }

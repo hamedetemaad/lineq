@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -25,7 +26,7 @@ func initWebServer(web_host string, web_port string) {
 	http.HandleFunc("/tables", getTables)
 	http.HandleFunc("/ws", handleWebSocket)
 	addr := web_host + ":" + web_port
-	fmt.Println("Server is running on ", addr)
+	log.Println("Server is running on ", addr)
 	http.ListenAndServe(addr, nil)
 }
 
@@ -35,14 +36,14 @@ func getTables(w http.ResponseWriter, r *http.Request) {
 
 	_, err := w.Write(messageJSON)
 	if err != nil {
-		fmt.Println("Error writing JSON response:", err)
+		log.Println("Error writing JSON response:", err)
 	}
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 	//defer conn.Close()
@@ -52,13 +53,13 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	webClients = append(webClients, webClient)
 
-	fmt.Println("Client connected")
+	log.Println("Client connected")
 
 	messageJSON := parseTables()
 
 	err = webClient.conn.WriteMessage(websocket.TextMessage, messageJSON)
 	if err != nil {
-		fmt.Println("WebSocket write error:", err)
+		log.Println("WebSocket write error:", err)
 		return
 	}
 }
@@ -72,18 +73,18 @@ func parseEntry(id string, entry Entry, keyType string, dataType []int) map[stri
 	case "integer":
 		jsonEntry["key"] = entry.Key
 	case "ipv4":
-		fmt.Println("IPv4")
+		log.Println("IPv4")
 		if value, ok := entry.Key.([]byte); ok {
 			jsonEntry["key"] = ipToString(value, false)
 		} else {
-			fmt.Println("Conversion to []byte failed.")
+			log.Println("Conversion to []byte failed.")
 			return nil
 		}
 	case "ipv6":
 		if value, ok := entry.Key.([]byte); ok {
 			jsonEntry["key"] = ipToString(value, true)
 		} else {
-			fmt.Println("Conversion to []byte failed.")
+			log.Println("Conversion to []byte failed.")
 			return nil
 		}
 	}
@@ -190,7 +191,7 @@ func parseTables() []byte {
 
 	messageJSON, err := json.Marshal(jsonData)
 	if err != nil {
-		fmt.Println("JSON serialization error:", err)
+		log.Println("JSON serialization error:", err)
 		return nil
 	}
 	return messageJSON
@@ -221,7 +222,7 @@ func sendTableUpdate(tableName string, id string) {
 	for i := 0; i < len(webClients); i++ {
 		err := webClients[i].conn.WriteMessage(websocket.TextMessage, messageJSON)
 		if err != nil {
-			fmt.Println("WebSocket write error:", err)
+			log.Println("WebSocket write error:", err)
 		}
 	}
 }
