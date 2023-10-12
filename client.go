@@ -32,7 +32,7 @@ func (client *Client) sendStatus(remoteId string) {
 	client.conn.Write([]byte(SUCCEEDED + "\n"))
 }
 
-func (client *Client) initConnection(name string, mode string, vwr_session_duration int, vwr_active_users int, roomTable string, usersTable string) {
+func (client *Client) initConnection(mode string, vwr_session_duration int, vwr_active_users int, roomTable string, usersTable string) {
 	client.mode = mode
 	client.roomTable = roomTable
 	client.usersTable = usersTable
@@ -51,7 +51,7 @@ func (client *Client) initConnection(name string, mode string, vwr_session_durat
 			client.conn.Close()
 			return
 		}
-		if remoteId != name+"\n" {
+		if remoteId != "lineq\n" {
 			client.conn.Write([]byte(REMOTE_ID_MISMATCH + "\n"))
 			client.conn.Close()
 			return
