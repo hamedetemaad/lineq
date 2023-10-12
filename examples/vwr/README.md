@@ -1,0 +1,2 @@
+1) SERVICE_VWR_SESSION_DURATION=2 SERVICE_VWR_TOTAL_ACTIVE_USERS=1 SERVICE_MODE=vwr lineq  
+2) Run the haproxy with the provided configuration(haproxy.cfg) (requires making some changes to certain parts of the configuration)
