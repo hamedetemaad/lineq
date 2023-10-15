@@ -5,8 +5,6 @@ import (
 	"log"
 	"time"
 
-	"fmt"
-
 	b64 "encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -149,16 +147,16 @@ func createEntryUpdate(tableDef TableDefinition, keyType int, keyValue interface
 			binary.BigEndian.PutUint32(result, val)
 			message = append(message, result...)
 		} else {
-			fmt.Println("Conversion to int32 failed.")
+			log.Println("Conversion to int32 failed.")
 			return nil
 		}
 	case IPv4:
-		fmt.Println("IPv4")
+		log.Println("IPv4")
 		if value, ok := keyValue.([]byte); ok {
 			message = append(message, value...)
 
 		} else {
-			fmt.Println("Conversion to []byte failed.")
+			log.Println("Conversion to []byte failed.")
 			return nil
 		}
 	case IPv6:
@@ -169,7 +167,7 @@ func createEntryUpdate(tableDef TableDefinition, keyType int, keyValue interface
 		}
 	case BINARY:
 	default:
-		fmt.Printf("Incorrect key type %v\n", keyType)
+		log.Printf("Incorrect key type %v\n", keyType)
 		return nil
 	}
 
@@ -189,19 +187,19 @@ func createEntryUpdate(tableDef TableDefinition, keyType int, keyValue interface
 			message = append(message, encode(entry.Values[dataType][0])...)
 		case HTTP_REQ_RATE:
 			cur_tick := encode(entry.Values[dataType][0])
-			fmt.Println(entry.Values[dataType][0])
+			log.Println(entry.Values[dataType][0])
 			message = append(message, cur_tick...)
 
 			cur_ctr := encode(entry.Values[dataType][1])
-			fmt.Println(entry.Values[dataType][1])
+			log.Println(entry.Values[dataType][1])
 			message = append(message, cur_ctr...)
 
 			prev_ctr := encode(entry.Values[dataType][2])
-			fmt.Println(entry.Values[dataType][2])
+			log.Println(entry.Values[dataType][2])
 			message = append(message, prev_ctr...)
 		case BYTES_IN_CNT, BYTES_OUT_CNT:
 		default:
-			fmt.Println("unknown type")
+			log.Println("unknown type")
 		}
 	}
 

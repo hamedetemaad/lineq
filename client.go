@@ -5,7 +5,7 @@ import (
 	b64 "encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
+	"log"
 	"net"
 )
 
@@ -41,7 +41,7 @@ func (client *Client) initConnection(name string, mode string, vwr_session_durat
 		client.conn.Close()
 		return
 	}
-	fmt.Printf("Message incoming: %s\n", string(message))
+	log.Printf("Message incoming: %s\n", string(message))
 	if matches := matchString(`^HAProxyS\s+(\d+(\.\d+)?)`, string(message)); len(matches) > 0 {
 		if matches[1] != "2.1" {
 			client.conn.Write([]byte(BAD_VERSION + "\n"))
@@ -51,7 +51,7 @@ func (client *Client) initConnection(name string, mode string, vwr_session_durat
 			client.conn.Close()
 			return
 		}
-		if remoteId != name+"\n" {
+		if remoteId != "lineq\n" {
 			client.conn.Write([]byte(REMOTE_ID_MISMATCH + "\n"))
 			client.conn.Close()
 			return
@@ -113,16 +113,16 @@ func (client *Client) readUpdateAck() {
 	}
 
 	end := client.pointer + length
-	fmt.Println("End ", end)
+	log.Println("End ", end)
 
 	client.pointer += consumed
 
 	consumed, stickTableId, _ := decode(client.buffer[client.pointer:])
-	fmt.Println("stick table id ", stickTableId, consumed)
+	log.Println("stick table id ", stickTableId, consumed)
 	client.pointer += consumed
 
 	updateId := binary.BigEndian.Uint32(client.buffer[client.pointer : client.pointer+4])
-	fmt.Println("update id ", updateId)
+	log.Println("update id ", updateId)
 	client.pointer += 4
 }
 
@@ -163,7 +163,7 @@ func (client *Client) readEntryUpdate() {
 		client.buffer = append(client.buffer, tmp[:n]...)
 	}
 	end := client.pointer + length
-	fmt.Println("End ", end)
+	log.Println("End ", end)
 
 	client.pointer += consumed
 
@@ -198,13 +198,13 @@ func (client *Client) readEntryUpdate() {
 		keyValue = int32(binary.BigEndian.Uint32(client.buffer[client.pointer : client.pointer+4]))
 		client.pointer += 4
 	default:
-		fmt.Println("error key")
+		log.Println("error key")
 		return
 	}
 
 	values := make(map[int][]int)
 	for i := 0; i < len(tableDefinition.DataTypes); i++ {
-		fmt.Println("DataType[...]", tableDefinition.DataTypes[i])
+		log.Println("DataType[...]", tableDefinition.DataTypes[i])
 		switch tableDefinition.DataTypes[i] {
 		case SERVER_ID:
 			consumed, server_id, _ := decode(client.buffer[client.pointer:])
@@ -236,23 +236,23 @@ func (client *Client) readEntryUpdate() {
 			consumed, curr_tick, _ := decode(client.buffer[client.pointer:])
 			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], curr_tick)
 			client.pointer += consumed
-			fmt.Println("cur tick", curr_tick)
+			log.Println("cur tick", curr_tick)
 
 			consumed, curr_ctr, _ := decode(client.buffer[client.pointer:])
 			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], curr_ctr)
 			client.pointer += consumed
-			fmt.Println("req rate", curr_ctr)
+			log.Println("req rate", curr_ctr)
 
 			consumed, prev_ctr, _ := decode(client.buffer[client.pointer:])
 			values[tableDefinition.DataTypes[i]] = append(values[tableDefinition.DataTypes[i]], prev_ctr)
 			client.pointer += consumed
-			fmt.Println("prev ctr", prev_ctr)
+			log.Println("prev ctr", prev_ctr)
 		case BYTES_IN_CNT, BYTES_OUT_CNT:
 			consumed, number, _ := decode(client.buffer[client.pointer:])
 			values[tableDefinition.DataTypes[i]] = []int{number}
 			client.pointer += consumed
 		default:
-			fmt.Println("error values")
+			log.Println("error values")
 		}
 	}
 
@@ -264,14 +264,14 @@ func (client *Client) readEntryUpdate() {
 		Values:   values,
 	}
 
-	fmt.Printf("update id %v\n", updateEntry.UpdateID)
-	fmt.Printf("expiry %v\n", updateEntry.Expiry)
-	fmt.Printf("keyType %v\n", updateEntry.KeyType)
-	fmt.Printf("keyValue %v\n", updateEntry.KeyValue)
-	fmt.Printf("values %v\n", updateEntry.Values)
+	log.Printf("update id %v\n", updateEntry.UpdateID)
+	log.Printf("expiry %v\n", updateEntry.Expiry)
+	log.Printf("keyType %v\n", updateEntry.KeyType)
+	log.Printf("keyValue %v\n", updateEntry.KeyValue)
+	log.Printf("values %v\n", updateEntry.Values)
 
-	fmt.Println("Pointer ", client.pointer)
-	fmt.Println("End ", end)
+	log.Println("Pointer ", client.pointer)
+	log.Println("End ", end)
 	keyEnc := client.updateTable(updateEntry)
 	client.sendUpdateAck(client.lastTableDefinition, updateId)
 
@@ -339,11 +339,11 @@ func (client *Client) readTableDefinition() {
 
 	consumed, stickTableId, _ := decode(client.buffer[client.pointer:])
 	client.pointer += consumed
-	fmt.Println("stick consumed ", consumed)
+	log.Println("stick consumed ", consumed)
 
 	consumed, nameLength, _ := decode(client.buffer[client.pointer:])
 	client.pointer += consumed
-	fmt.Printf("name length %v\n", nameLength)
+	log.Printf("name length %v\n", nameLength)
 
 	name := string(client.buffer[client.pointer : client.pointer+nameLength])
 	client.pointer += nameLength
@@ -359,9 +359,9 @@ func (client *Client) readTableDefinition() {
 
 	switch keyType {
 	case SINT, IPv4, IPv6, STRING, BINARY:
-		fmt.Printf("well\n")
+		log.Printf("well\n")
 	default:
-		fmt.Printf("Incorrect key type %v\n", keyType)
+		log.Printf("Incorrect key type %v\n", keyType)
 		return
 	}
 
@@ -370,8 +370,8 @@ func (client *Client) readTableDefinition() {
 
 	consumed, dataType, _ := decode(client.buffer[client.pointer:])
 	client.pointer += consumed
-	fmt.Println("dataType consumed ", consumed)
-	fmt.Println("dataType ", dataType)
+	log.Println("dataType consumed ", consumed)
+	log.Println("dataType ", dataType)
 
 	consumed, expiry, _ := decode(client.buffer[client.pointer:])
 	client.pointer += consumed
@@ -394,7 +394,7 @@ func (client *Client) readTableDefinition() {
 		client.pointer += consumed
 		freq = append(freq, freq_cnt_prd)
 
-		fmt.Printf("counter %v %v\n", freq[0], freq[1])
+		log.Printf("counter %v %v\n", freq[0], freq[1])
 
 		frequency = append(frequency, freq)
 
@@ -422,13 +422,13 @@ func (client *Client) readTableDefinition() {
 		Frequency:    frequency,
 	}
 
-	fmt.Println("StickTableId ", tableDefinition.StickTableID)
-	fmt.Println("Name ", tableDefinition.Name)
-	fmt.Println("KeyType ", tableDefinition.KeyType)
-	fmt.Println("KeyLen ", tableDefinition.KeyLen)
-	fmt.Println("DataTypes ", tableDefinition.DataTypes)
-	fmt.Println("Expiry ", tableDefinition.Expiry)
-	fmt.Println("Frequency ", tableDefinition.Frequency)
+	log.Println("StickTableId ", tableDefinition.StickTableID)
+	log.Println("Name ", tableDefinition.Name)
+	log.Println("KeyType ", tableDefinition.KeyType)
+	log.Println("KeyLen ", tableDefinition.KeyLen)
+	log.Println("DataTypes ", tableDefinition.DataTypes)
+	log.Println("Expiry ", tableDefinition.Expiry)
+	log.Println("Frequency ", tableDefinition.Frequency)
 
 	client.lastTableDefinition = tableDefinition
 
@@ -464,7 +464,7 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 	case []byte:
 		key = v
 	default:
-		fmt.Println("Unsupported type")
+		log.Println("Unsupported type")
 	}
 
 	jsonKey, _ := json.Marshal(&key)
@@ -532,7 +532,7 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 			case BYTES_IN_CNT, BYTES_OUT_CNT:
 				globEntry.Values[dataType] = make([]int, 1)
 			default:
-				fmt.Println("error values")
+				log.Println("error values")
 			}
 		}
 
@@ -552,7 +552,7 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 						case BYTES_IN_CNT, BYTES_OUT_CNT:
 							globEntry.Values[dType][0] += locEnt.Values[dType][0]
 						default:
-							fmt.Println("error values")
+							log.Println("error values")
 						}
 					}
 				}
@@ -617,16 +617,16 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 			binary.BigEndian.PutUint32(result, val)
 			message = append(message, result...)
 		} else {
-			fmt.Println("Conversion to int32 failed.")
+			log.Println("Conversion to int32 failed.")
 			return nil
 		}
 	case IPv4:
-		fmt.Println("IPv4")
+		log.Println("IPv4")
 		if value, ok := keyValue.([]byte); ok {
 			message = append(message, value...)
 
 		} else {
-			fmt.Println("Conversion to []byte failed.")
+			log.Println("Conversion to []byte failed.")
 			return nil
 		}
 	case IPv6:
@@ -637,7 +637,7 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 		}
 	case BINARY:
 	default:
-		fmt.Printf("Incorrect key type %v\n", keyType)
+		log.Printf("Incorrect key type %v\n", keyType)
 		return nil
 	}
 
@@ -657,19 +657,19 @@ func (client *Client) createEntryUpdate(tableDef TableDefinition, keyType int, k
 			message = append(message, encode(entry.Values[dataType][0])...)
 		case HTTP_REQ_RATE:
 			cur_tick := encode(entry.Values[dataType][0])
-			fmt.Println(entry.Values[dataType][0])
+			log.Println(entry.Values[dataType][0])
 			message = append(message, cur_tick...)
 
 			cur_ctr := encode(entry.Values[dataType][1])
-			fmt.Println(entry.Values[dataType][1])
+			log.Println(entry.Values[dataType][1])
 			message = append(message, cur_ctr...)
 
 			prev_ctr := encode(entry.Values[dataType][2])
-			fmt.Println(entry.Values[dataType][2])
+			log.Println(entry.Values[dataType][2])
 			message = append(message, prev_ctr...)
 		case BYTES_IN_CNT, BYTES_OUT_CNT:
 		default:
-			fmt.Println("unknown type")
+			log.Println("unknown type")
 		}
 	}
 	return message
@@ -745,59 +745,59 @@ func (client *Client) handleRequests() {
 
 		switch reqClass {
 		case CLASS_CONTROL:
-			fmt.Println("control class")
+			log.Println("control class")
 			classType := client.buffer[client.pointer]
 			client.pointer += 1
 			switch classType {
 			case HEARTBEAT:
-				fmt.Println("heartbeat")
+				log.Println("heartbeat")
 				client.sendHeartBeat()
 			case SYNCHRONIZATION_REQUEST:
-				fmt.Println("synchronization request")
+				log.Println("synchronization request")
 				client.updatePeer()
 				client.conn.Write([]byte{CLASS_CONTROL, SYNCHRONIZATION_FINISHED})
 			case SYNCHRONIZATION_PARTIAL:
-				fmt.Println("synchronization partial")
+				log.Println("synchronization partial")
 				//client.conn.Write([]byte{CLASS_CONTROL, SYNCHRONIZATION_FINISHED})
 				client.conn.Write([]byte{CLASS_CONTROL, SYNCHRONIZATION_CONFIRMED})
 			case SYNCHRONIZATION_CONFIRMED:
-				fmt.Println("synchronization confirmed")
+				log.Println("synchronization confirmed")
 			}
 		case CLASS_ERROR:
-			fmt.Println("error class")
+			log.Println("error class")
 			classType := client.buffer[client.pointer]
 			client.pointer += 1
 			if classType == 0 {
-				fmt.Println("protocol error")
+				log.Println("protocol error")
 			} else {
-				fmt.Println("size limit error")
+				log.Println("size limit error")
 			}
 		case CLASS_UPDATE:
-			fmt.Println("stick-table updates class")
+			log.Println("stick-table updates class")
 			classType := client.buffer[client.pointer]
 			client.pointer += 1
 
 			switch classType {
 			case ENTRY_UPDATE:
-				fmt.Println("entry update")
+				log.Println("entry update")
 				client.readEntryUpdate()
 				if client.pointer < len(client.buffer) {
 					client.buffer = client.buffer[client.pointer:]
 					client.pointer = 0
 				}
 			case INCREMENTAL_ENTRY_UPDATE:
-				fmt.Println("incremental entry update")
+				log.Println("incremental entry update")
 			case STICK_TABLE_DEFINITION:
-				fmt.Println("stick table definition")
+				log.Println("stick table definition")
 				client.readTableDefinition()
 				if client.pointer < len(client.buffer) {
 					client.buffer = client.buffer[client.pointer:]
 					client.pointer = 0
 				}
 			case STICK_TABLE_SWITCH:
-				fmt.Println("stick table switch")
+				log.Println("stick table switch")
 			case UPDATE_ACK:
-				fmt.Println("update message acknowledgement")
+				log.Println("update message acknowledgement")
 				client.readUpdateAck()
 				if client.pointer < len(client.buffer) {
 					client.buffer = client.buffer[client.pointer:]
@@ -805,9 +805,9 @@ func (client *Client) handleRequests() {
 				}
 			}
 		case CLASS_RESERVED:
-			fmt.Println("reserved class")
+			log.Println("reserved class")
 		default:
-			fmt.Println("class does not implemented ", reqClass)
+			log.Println("class does not implemented ", reqClass)
 		}
 	}
 }

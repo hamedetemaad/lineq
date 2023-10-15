@@ -1,171 +1,45 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <title>Stick Tables</title>
+    <meta http-equiv="refresh" content="30">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>lineQ</title>
     <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
         body {
-            background-color: #333;
-            color: #fff;
-            font-family: Arial, sans-serif;
+            line-height: 1.4;
+            font-size: 1rem;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            padding: 2rem;
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
         }
-
-        .table-container {
-            background-color: #222;
-            margin: 20px 0;
-        }
-
-        table {
-            border-collapse: collapse;
+        
+        .container {
             width: 100%;
+            max-width: 800px;
         }
-
-        table, th, td {
-            border: 1px solid #444;
-        }
-
-        th, td {
-            padding: 10px;
-            text-align: left;
-        }
-
-        th {
-            background-color: #111;
-            color: #fff;
-        }
-
-        tr:nth-child(even) {
-            background-color: #333;
-        }
-
-        tr:nth-child(odd) {
-            background-color: #444;
+        
+        p {
+            margin-top: 0.5rem;
         }
     </style>
 </head>
 <body>
-    <h1>Stick Tables</h1>
-    
-    <script>
-        const socket = new WebSocket('ws://' + window.location.host + '/ws'); // Replace with your WebSocket server URL
-        var tables = []
-        socket.addEventListener('message', (event) => {
-            const jsonData = JSON.parse(event.data);
-
-            console.log(jsonData)
-            const mode = jsonData["mode"]
-            delete jsonData['mode'];
-            
-            if (mode == "tables") {
-                Object.keys(jsonData).forEach((key) => {
-                    tables.push(key)
-                    const tableContainer = document.createElement('div');
-                    tableContainer.classList.add('table-container');
-                    title = document.createElement('h2')
-                    title.textContent = key
-                    tableContainer.appendChild(title);
-
-                    const table = document.createElement('table');
-                    table.classList.add('dataTable');
-
-                    const thead = document.createElement('thead');
-                    const headerRow = document.createElement('tr');
-
-                    const th1 = document.createElement('th');
-                    th1.textContent = jsonData[key]["type"];
-                    const th2 = document.createElement('th');
-                    th2.textContent = jsonData[key]["vtypes"]
-
-                    headerRow.appendChild(th1);
-                    headerRow.appendChild(th2);
-                    thead.appendChild(headerRow);
-                    table.appendChild(thead);
-
-                    const tbody = document.createElement('tbody');
-                    tbody.id = key
-                    jsonData[key]["entries"].forEach((value) => {
-                        const valueRow = document.createElement('tr');
-                        const td1 = document.createElement('td');
-                        td1.textContent = value["key"];
-                        const td2 = document.createElement('td');
-                        td2.textContent = value["value"];
-                        td2.id = value["id"]
-                        valueRow.appendChild(td1);
-                        valueRow.appendChild(td2);
-                        tbody.appendChild(valueRow);
-                    })
-                    table.appendChild(tbody);
-
-                    tableContainer.appendChild(table);
-                    document.body.appendChild(tableContainer);
-                });
-            } else if (mode == "update") {
-                Object.keys(jsonData).forEach((key) => {
-                    if(tables.indexOf(key) !== -1)   {
-                        id = jsonData[key]["entry"]["id"]
-                        var element = document.getElementById(id);
-                        if (element != null) {
-                            element.textContent = jsonData[key]["entry"]["value"]
-                        } else {
-                            var tbody = document.getElementById(key);
-
-                            const valueRow = document.createElement('tr');
-                            const td1 = document.createElement('td');
-                            td1.textContent = jsonData[key]["entry"]["key"];
-                            const td2 = document.createElement('td');
-                            td2.textContent = jsonData[key]["entry"]["value"];
-                            td2.id = id
-                            valueRow.appendChild(td1);
-                            valueRow.appendChild(td2);
-                            tbody.appendChild(valueRow);
-                        }
-                    } else {
-                        const tableContainer = document.createElement('div');
-                        tableContainer.classList.add('table-container');
-                        title = document.createElement('h2')
-                        title.textContent = key
-                        tableContainer.appendChild(title);
-
-                        const table = document.createElement('table');
-                        table.classList.add('dataTable');
-
-                        const thead = document.createElement('thead');
-                        const headerRow = document.createElement('tr');
-
-                        const th1 = document.createElement('th');
-                        th1.textContent = jsonData[key]["type"];
-                        const th2 = document.createElement('th');
-                        th2.textContent = "value"
-
-                        headerRow.appendChild(th1);
-                        headerRow.appendChild(th2);
-                        thead.appendChild(headerRow);
-                        table.appendChild(thead);
-
-                        const tbody = document.createElement('tbody');
-                        tbody.id = key
-                        const valueRow = document.createElement('tr');
-                        const td1 = document.createElement('td');
-                        td1.textContent = jsonData[key]["entry"]["key"];
-                        const td2 = document.createElement('td');
-                        td2.textContent = jsonData[key]["entry"]["value"];
-                        td2.id = jsonData[key]["entry"]["id"]
-                        valueRow.appendChild(td1);
-                        valueRow.appendChild(td2);
-                        tbody.appendChild(valueRow);
-                        table.appendChild(tbody);
-
-                        tableContainer.appendChild(table);
-                        document.body.appendChild(tableContainer);
-
-                    }
-                })
-            }
-        });
-
-        socket.addEventListener('close', (event) => {
-            console.error('WebSocket closed:', event);
-        });
-    </script>
+    <div class="container">
+        <h1>
+            <div>You are currently in the queue.</div>
+            <div>Thank you for your patience.</div>
+        </h1>
+        <p>We are experiencing a high volume of traffic. Please remain on this page, and we will admit you shortly.</p>
+        <p><b>This page will refresh automatically. Please do not close your browser.</b></p>
+    </div>
 </body>
 </html>
