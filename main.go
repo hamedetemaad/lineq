@@ -11,7 +11,6 @@ import (
 
 	b64 "encoding/base64"
 	"encoding/json"
-	"fmt"
 )
 
 var peers []*Client
@@ -23,7 +22,7 @@ type Config struct {
 	WEB_HOST                string           `json:"web_host" default:"localhost"`
 	TCP_PORT                string           `json:"tcp_port" default:"11111"`
 	WEB_PORT                string           `json:"web_port" default:"8060"`
-	SERVICE_NAME            string           `json:"service_name" default:"lineQ"`
+	TARGET_PORT             string           `json:"target_port" default:"80"`
 	SERVICE_MODE            string           `json:"service_mode" default:"agg"`
 	VWR_ROOM_TABLE          string           `json:"vwr_room_table" default:"room"`
 	VWR_INACTIVITY_DURATION int              `json:"vwr_inactivity_duration"`
@@ -32,7 +31,7 @@ type Config struct {
 
 type Route struct {
 	TOTAL_ACTIVE_USERS int    `json:"vwr_active_users"`
-	PATH               string `json:"vwr_users_path"`
+	PATH               string `json:"path"`
 }
 
 func setDefaults(config *Config) {
@@ -102,7 +101,7 @@ func main() {
 	service_tcp_port := config.TCP_PORT
 	service_web_host := config.WEB_HOST
 	service_web_port := config.WEB_PORT
-	service_name := config.SERVICE_NAME
+	service_target_port := config.TARGET_PORT
 	vwr_session_duration := config.VWR_INACTIVITY_DURATION
 
 	initLogger()
