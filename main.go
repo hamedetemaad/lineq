@@ -145,7 +145,7 @@ func main() {
 			reader: bufio.NewReader(conn),
 		}
 		peers = append(peers, client)
-		go client.initConnection(service_name, service_mode, vwr_session_duration, service_vwr_room_table, config.VWR_ROUTES)
+		go client.initConnection(service_mode, vwr_session_duration, service_vwr_room_table, config.VWR_ROUTES)
 	}
 }
 

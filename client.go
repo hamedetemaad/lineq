@@ -32,7 +32,7 @@ func (client *Client) sendStatus(remoteId string) {
 	client.conn.Write([]byte(SUCCEEDED + "\n"))
 }
 
-func (client *Client) initConnection(name string, mode string, vwr_session_duration int, roomTable string, routes map[string]Route) {
+func (client *Client) initConnection(mode string, vwr_session_duration int, roomTable string, routes map[string]Route) {
 	client.mode = mode
 	client.roomTable = roomTable
 	client.usersTable = routes
