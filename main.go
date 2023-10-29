@@ -118,7 +118,7 @@ func main() {
 
 	if service_mode == "vwr" {
 		if *cFlag {
-			generateHAProxyConfiguration(service_vwr_room_table, service_vwr_users_table, vwr_session_duration, service_web_host, service_web_port, service_tcp_host, service_tcp_port)
+			generateHAProxyConfiguration(service_vwr_room_table, config.VWR_ROUTES, vwr_session_duration, service_web_host, service_web_port, service_tcp_host, service_tcp_port, service_target_port)
 			os.Exit(0)
 		}
 
@@ -189,7 +189,7 @@ func initLogger() {
 	log.SetPrefix("lineQ   ")
 }
 
-func generateHAProxyConfiguration(roomTable string, usersTable string, session_duration int, webHost string, webPort string, tcpHost string, tcpPort string) {
+func generateHAProxyConfiguration(roomTable string, routes map[string]Route, session_duration int, webHost string, webPort string, tcpHost string, tcpPort string, targetPort string) {
 	fileName := "haproxy.cfg"
 	config := ""
 	file, err := os.Create(fileName)
@@ -207,30 +207,53 @@ func generateHAProxyConfiguration(roomTable string, usersTable string, session_d
 	config += fmt.Sprintln("\tserver haproxy1")
 	config += fmt.Sprintf("\tserver lineq %s:%s\n", tcpHost, tcpPort)
 	config += fmt.Sprintf("backend %s\n", roomTable)
-	config += fmt.Sprintf("\tstick-table type integer size 2 expire 1d store gpc0 peers lineq\n")
-	config += fmt.Sprintf("backend %s\n", usersTable)
-	config += fmt.Sprintf("\tstick-table type string len 36 size 100k expire %vm store gpc1 peers lineq\n", session_duration)
-	config += fmt.Sprintln("frontend fe_main")
-	config += fmt.Sprintf("\tbind *:80\n")
-	config += fmt.Sprintf("\thttp-request track-sc0 int(1) table %s\n", roomTable)
+	config += fmt.Sprintf("\tstick-table type string size %v expire 1d store gpc0 peers lineq\n", len(routes))
+
+	for name := range routes {
+		config += fmt.Sprintf("\nbackend %s\n", name)
+		config += fmt.Sprintf("\tstick-table type string len 36 size 100k expire %vm store gpc1 peers lineq\n", session_duration)
+	}
+
+	config += fmt.Sprintln("\nfrontend fe_main")
+
+	if targetPort == "443" {
+		config += fmt.Sprintf("\tbind *:%s ssl crt /etc/haproxy/certs/ no-sslv3 no-tls-tickets no-tlsv10 no-tlsv11\n", targetPort)
+		config += fmt.Sprintf("\thttp-response set-header Strict-Transport-Security \"max-age=16000000; includeSubDomains; preload;\"\n")
+	} else {
+		config += fmt.Sprintf("\tbind *:%s\n", targetPort)
+	}
+
 	config += fmt.Sprintf("\thttp-request set-var(txn.has_cookie) req.cook_cnt(sessionid)\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.t2) uuid()  if !{ var(txn.has_cookie) -m int gt 0 }\n")
-	config += fmt.Sprintf("\thttp-response add-header Set-Cookie \"sessionid=%%[var(txn.t2)]; path=/\" if !{ var(txn.has_cookie) -m int gt 0 }\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.sessionid) req.cook(sessionid)\n")
-	config += fmt.Sprintf("\thttp-request track-sc1 var(txn.sessionid) table timestamps if { var(txn.has_cookie) -m int gt 0 }\n")
-	config += fmt.Sprintf("\thttp-request track-sc1 var(txn.t2) table timestamps if !{ var(txn.has_cookie) -m int gt 0 }\n")
+	config += fmt.Sprintf("\thttp-request set-var(txn.path) path\n")
+	for name, route := range routes {
+		path := route.PATH
+		config += fmt.Sprintf("\thttp-request track-sc0 str(\"%s\") table %s if { var(txn.path) -i -m beg %s }\n", name, roomTable, path)
+		config += fmt.Sprintf("\thttp-response add-header Set-Cookie \"sessionid=%%[var(txn.t2)]; path=%s\" if { var(txn.path) -i -m beg %s } !{ var(txn.has_cookie) -m int gt 0 }\n", path, route.PATH)
+		config += fmt.Sprintf("\thttp-request track-sc1 var(txn.sessionid) table %s if { var(txn.path) -i -m beg %s } { var(txn.has_cookie) -m int gt 0 }\n", name, path)
+		config += fmt.Sprintf("\thttp-request track-sc1 var(txn.t2) table %s if { var(txn.path) -i -m beg %s } !{ var(txn.has_cookie) -m int gt 0 }\n", name, path)
+		config += fmt.Sprintf("\thttp-request set-var(txn.backid) \"str('bk_'),concat('%s')\" if { var(txn.path) -i -m beg %s } \n", name, path)
+	}
+
 	config += fmt.Sprintf("\tacl has_slot sc_get_gpc1(1) eq 1\n")
 	config += fmt.Sprintf("\tacl free_slot sc_get_gpc0(0) gt 0\n")
 	config += fmt.Sprintf("\thttp-request sc-inc-gpc1(1) if free_slot !has_slot\n")
-	config += fmt.Sprintf("\tuse_backend bk_yes if has_slot\n")
+	config += fmt.Sprintf("\tuse_backend %%[var(txn.backid)] if has_slot\n")
 	config += fmt.Sprintf("\tdefault_backend bk_no\n")
-	config += fmt.Sprintln("backend bk_yes")
-	config += fmt.Sprintln("\tmode http")
-	config += fmt.Sprintln("\t#### (lineq) change to actual ip:port(s) of your service")
-	config += fmt.Sprintln("\tserver server 127.0.0.1:8889")
-	config += fmt.Sprintln("backend bk_no")
+
+	config += fmt.Sprintln("\nbackend bk_no")
 	config += fmt.Sprintln("\tmode http")
 	config += fmt.Sprintf("\tserver lineq %s:%s\n", webHost, webPort)
+
+	/*
+		for name := range routes {
+			config += fmt.Sprintf("\nbackend bk_%s\n", name)
+			config += fmt.Sprintln("\tmode http")
+			config += fmt.Sprintln("\t#### (lineq) change to actual ip:port(s) of your service")
+			config += fmt.Sprintln("\tserver server 127.0.0.1:8889")
+		}
+	*/
 
 	data := []byte(config)
 	_, err = file.Write(data)
