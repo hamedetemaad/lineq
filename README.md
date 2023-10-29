@@ -1,6 +1,10 @@
 # LineQ
 implemention of Virtual Waiting Room Using HAProxy’s Peers Protocol(v2.1)
 
+<p align="center">
+  <img src="static/lineq.gif" width="400" title="lineq-vwr mode">
+</p>
+
 ## Problems this solves
 LineQ can be used to implement Virtual Waiting Room using HAProxy's stick tables(vwr mode) and synchronize stick tables from multiple instances of HAProxy when operating in an active-active mode(agg mode) or to accumulate HAProxy's stick tables entries for accounting(currently, just addition) purposes(acc mode)
 
