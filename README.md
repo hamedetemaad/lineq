@@ -2,7 +2,7 @@
 implemention of Virtual Waiting Room Using HAProxy’s Peers Protocol(v2.1)
 
 <p align="center">
-  <img src="static/lineq.gif" width="400" title="lineq-vwr mode">
+  <img src="static/lineq.gif" width="700" title="lineq-vwr mode">
 </p>
 
 ## Problems this solves
