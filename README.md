@@ -5,7 +5,7 @@ implemention of Virtual Waiting Room Using HAProxy’s Peers Protocol(v2.1)
   <img src="static/lineq.gif" width="700" title="lineq-vwr mode">
 </p>
 
-## What is Virtaul Waiting Room
+## What is Virtual Waiting Room
 Please read this article by <a href="https://blog.cloudflare.com/cloudflare-waiting-room/">Cloudflare.</a>
 
 ## Problems this solves
