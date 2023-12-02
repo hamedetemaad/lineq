@@ -14,27 +14,34 @@ import (
 
 var cache *bigcache.BigCache
 
-func initCache(vwr_session_duration int, vwr_total_users int, roomTable string, usersTable string) {
+func initCache(vwr_session_duration int, routes map[string]Route, roomTable string) {
+	vwr_total_users := 0
+	for _, route := range routes {
+		vwr_total_users += route.TOTAL_ACTIVE_USERS
+	}
+
 	onRemove := func(key string, entry []byte) {
+		usersTable := string(entry)
+
 		delete(tables[usersTable].entries, key)
-		if len(sortedEntries) > 0 {
-			newKey := sortedEntries[0]
+		if len(sortedEntries[usersTable]) > 0 {
+			newKey := sortedEntries[usersTable][0]
 			tables[usersTable].entries[newKey].Values[GPC1][0] = 1
-			sortedEntries = sortedEntries[1:]
+			sortedEntries[usersTable] = sortedEntries[usersTable][1:]
 			tableDef := tables[usersTable].definition
 			keyValue := tables[usersTable].entries[newKey].Key
 			updateClients(tableDef, newKey, keyValue)
-			cache.Set(newKey, []byte{})
+			cache.Set(newKey, entry)
 			sendTableUpdate(usersTable, newKey)
 		} else {
-			var roomKey []byte = s32tob(1)
+			var roomKey []byte = entry
 			roomJson, _ := json.Marshal(&roomKey)
 			roomEnc := b64.StdEncoding.EncodeToString(roomJson)
 			curVal := tables[roomTable].entries[roomEnc].Values[GPC0][0]
-			if curVal < vwr_total_users {
+			if curVal < routes[usersTable].TOTAL_ACTIVE_USERS {
 				tables[roomTable].entries[roomEnc].Values[GPC0][0] += 1
 				tableDef := tables[roomTable].definition
-				updateClients(tableDef, roomEnc, int32(1))
+				updateClients(tableDef, roomEnc, usersTable)
 				sendTableUpdate(roomTable, roomEnc)
 			}
 		}
@@ -57,7 +64,7 @@ func initCache(vwr_session_duration int, vwr_total_users int, roomTable string, 
 		MaxEntriesInWindow: vwr_total_users,
 
 		// max entry size in bytes, used only in initial memory allocation
-		MaxEntrySize: 50,
+		MaxEntrySize: 64,
 
 		// prints information about additional memory allocation
 		Verbose: true,
@@ -65,7 +72,7 @@ func initCache(vwr_session_duration int, vwr_total_users int, roomTable string, 
 		// cache will not allocate more memory than this limit, value in MB
 		// if value is reached then the oldest entries can be overridden for the new ones
 		// 0 value means no size limit
-		HardMaxCacheSize: vwr_total_users * (50 / 1024 / 1024),
+		HardMaxCacheSize: vwr_total_users * (64 / 1024 / 1024),
 
 		// callback fired when the oldest entry is removed because of its expiration time or no space left
 		// for the new entry, or because delete was called. A bitmask representing the reason will be returned.

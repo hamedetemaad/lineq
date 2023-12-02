@@ -7,15 +7,68 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
+	"reflect"
 
 	b64 "encoding/base64"
 	"encoding/json"
 )
 
 var peers []*Client
-var sortedEntries []string
+var sortedEntries map[string][]string
 var tables = make(map[string]Table)
+
+type Config struct {
+	TCP_HOST                string           `json:"tcp_host" default:"localhost"`
+	WEB_HOST                string           `json:"web_host" default:"localhost"`
+	TCP_PORT                string           `json:"tcp_port" default:"11111"`
+	WEB_PORT                string           `json:"web_port" default:"8060"`
+	TARGET_PORT             string           `json:"target_port" default:"80"`
+	SERVICE_MODE            string           `json:"service_mode" default:"agg"`
+	VWR_ROOM_TABLE          string           `json:"vwr_room_table" default:"room"`
+	VWR_INACTIVITY_DURATION int              `json:"vwr_inactivity_duration"`
+	VWR_ROUTES              map[string]Route `json:"routes"`
+}
+
+type Route struct {
+	TOTAL_ACTIVE_USERS int    `json:"vwr_active_users"`
+	PATH               string `json:"path"`
+}
+
+func setDefaults(config *Config) {
+	valueType := reflect.ValueOf(config)
+	valueTypeKind := valueType.Kind()
+
+	if valueTypeKind != reflect.Ptr || valueType.Elem().Kind() != reflect.Struct {
+		fmt.Println("Input must be a pointer to a struct")
+		return
+	}
+
+	valueType = valueType.Elem()
+	valueTypeType := valueType.Type()
+
+	for i := 0; i < valueType.NumField(); i++ {
+		field := valueType.Field(i)
+		fieldType := valueTypeType.Field(i)
+		fmt.Println(fieldType)
+
+		if field.IsZero() {
+			defaultValueTag := fieldType.Tag.Get("default")
+
+			if defaultValueTag != "" {
+				switch field.Kind() {
+				case reflect.Int:
+					defaultIntValue := reflect.ValueOf(defaultValueTag).Convert(field.Type())
+					field.Set(defaultIntValue)
+				case reflect.String:
+					field.SetString(defaultValueTag)
+				case reflect.Bool:
+					defaultBoolValue := defaultValueTag == "true" || defaultValueTag == "1"
+					field.SetBool(defaultBoolValue)
+				}
+			}
+		}
+	}
+}
 
 func getenv(key, fallback string) string {
 	value := os.Getenv(key)
@@ -26,19 +79,32 @@ func getenv(key, fallback string) string {
 }
 
 func main() {
-	initLogger()
+	configFile, err := os.Open("/etc/lineq/lineq.cfg")
+	if err != nil {
+		fmt.Println("Error opening configuration file:", err)
+		return
+	}
+	defer configFile.Close()
 
-	service_tcp_host := getenv("SERVICE_TCP_HOST", DEFAULT_TCP_HOST)
-	service_tcp_port := getenv("SERVICE_TCP_PORT", DEFAULT_TCP_PORT)
-	service_web_host := getenv("SERVICE_WEB_HOST", DEFAULT_WEB_HOST)
-	service_web_port := getenv("SERVICE_WEB_PORT", DEFAULT_WEB_PORT)
-	service_mode := getenv("SERVICE_MODE", DEFAULT_MODE) // vwr(virtual waiting room) or agg(Aggregation) or acc(Accumulation)
-	service_vwr_session_duration := getenv("SERVICE_VWR_SESSION_DURATION", DEFAULT_VWR_SESSION_DURATION)
-	service_vwr_total_users := getenv("SERVICE_VWR_TOTAL_ACTIVE_USERS", DEFAULT_VWR_TOTAL_USERS)
-	service_vwr_room_table := getenv("SERVICE_VWR_ROOM_TABLE", DEFAULT_VWR_ROOM_TABLE)
-	service_vwr_users_table := getenv("SERVICE_VWR_USERS_TABLE", DEFAULT_VWR_USERS_TABLE)
-	vwr_session_duration, _ := strconv.Atoi(service_vwr_session_duration)
-	vwr_total_users, _ := strconv.Atoi(service_vwr_total_users)
+	var config Config
+	decoder := json.NewDecoder(configFile)
+	if err := decoder.Decode(&config); err != nil {
+		fmt.Println("Error decoding configuration:", err)
+		return
+	}
+
+	setDefaults(&config)
+
+	service_mode := config.SERVICE_MODE
+	service_vwr_room_table := config.VWR_ROOM_TABLE
+	service_tcp_host := config.TCP_HOST
+	service_tcp_port := config.TCP_PORT
+	service_web_host := config.WEB_HOST
+	service_web_port := config.WEB_PORT
+	service_target_port := config.TARGET_PORT
+	vwr_session_duration := config.VWR_INACTIVITY_DURATION
+
+	initLogger()
 
 	cFlag := flag.Bool("c", false, "generate haproxy configuration (boolean)")
 	flag.Parse()
@@ -52,12 +118,17 @@ func main() {
 
 	if service_mode == "vwr" {
 		if *cFlag {
-			generateHAProxyConfiguration(service_vwr_room_table, service_vwr_users_table, vwr_session_duration, service_web_host, service_web_port, service_tcp_host, service_tcp_port)
+			generateHAProxyConfiguration(service_vwr_room_table, config.VWR_ROUTES, vwr_session_duration, service_web_host, service_web_port, service_tcp_host, service_tcp_port, service_target_port)
 			os.Exit(0)
 		}
 
-		initRoomTable(vwr_total_users, service_vwr_room_table)
-		go initCache(vwr_session_duration, vwr_total_users, service_vwr_room_table, service_vwr_users_table)
+		if len(config.VWR_ROUTES) == 0 {
+			fmt.Println("routes is empty")
+			return
+		}
+
+		initRoomTable(config.VWR_ROUTES, service_vwr_room_table)
+		go initCache(vwr_session_duration, config.VWR_ROUTES, service_vwr_room_table)
 	}
 
 	defer listen.Close()
@@ -73,43 +144,44 @@ func main() {
 			reader: bufio.NewReader(conn),
 		}
 		peers = append(peers, client)
-		go client.initConnection(service_mode, vwr_session_duration, vwr_total_users, service_vwr_room_table, service_vwr_users_table)
+		go client.initConnection(service_mode, vwr_session_duration, service_vwr_room_table, config.VWR_ROUTES)
 	}
 }
 
-func initRoomTable(vwr_total_users int, roomName string) {
+func initRoomTable(routes map[string]Route, roomName string) {
 	frequency := [][]int{}
 	dType := []int{GPC0}
 	tableDefinition := TableDefinition{
 		StickTableID: 777,
 		Name:         roomName,
-		KeyType:      SINT,
-		KeyLen:       4,
+		KeyType:      STRING,
+		KeyLen:       32,
 		DataTypes:    dType,
 		Expiry:       24 * 60 * 60 * 1000,
 		Frequency:    frequency,
 	}
 
-	roomTable := Table{
-		localUpdateId: 0,
-		definition:    tableDefinition,
+	for name, route := range routes {
+		roomTable := Table{
+			localUpdateId: 0,
+			definition:    tableDefinition,
+		}
+
+		var key []byte = []byte(name)
+
+		jsonKey, _ := json.Marshal(&key)
+		keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
+
+		roomTable.entries = make(map[string]Entry)
+		roomEntry := Entry{
+			Key: name,
+		}
+		roomEntry.Values = make(map[int][]int)
+		roomEntry.Values[GPC0] = []int{route.TOTAL_ACTIVE_USERS}
+		roomTable.entries[keyEnc] = roomEntry
+		tables[roomName] = roomTable
+		sortedEntries[name] = make([]string, 0)
 	}
-
-	var key []byte = s32tob(1)
-
-	jsonKey, _ := json.Marshal(&key)
-	keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
-
-	roomTable.entries = make(map[string]Entry)
-	var entryKey int32 = 1
-	roomEntry := Entry{
-		Key: entryKey,
-	}
-	roomEntry.Values = make(map[int][]int)
-	roomEntry.Values[GPC0] = []int{vwr_total_users}
-	roomTable.entries[keyEnc] = roomEntry
-	tables[roomName] = roomTable
-	sortedEntries = make([]string, 0)
 }
 
 func initLogger() {
@@ -117,7 +189,7 @@ func initLogger() {
 	log.SetPrefix("lineQ   ")
 }
 
-func generateHAProxyConfiguration(roomTable string, usersTable string, session_duration int, webHost string, webPort string, tcpHost string, tcpPort string) {
+func generateHAProxyConfiguration(roomTable string, routes map[string]Route, session_duration int, webHost string, webPort string, tcpHost string, tcpPort string, targetPort string) {
 	fileName := "haproxy.cfg"
 	config := ""
 	file, err := os.Create(fileName)
@@ -135,30 +207,53 @@ func generateHAProxyConfiguration(roomTable string, usersTable string, session_d
 	config += fmt.Sprintln("\tserver haproxy1")
 	config += fmt.Sprintf("\tserver lineq %s:%s\n", tcpHost, tcpPort)
 	config += fmt.Sprintf("backend %s\n", roomTable)
-	config += fmt.Sprintf("\tstick-table type integer size 2 expire 1d store gpc0 peers lineq\n")
-	config += fmt.Sprintf("backend %s\n", usersTable)
-	config += fmt.Sprintf("\tstick-table type string len 36 size 100k expire %vm store gpc1 peers lineq\n", session_duration)
-	config += fmt.Sprintln("frontend fe_main")
-	config += fmt.Sprintf("\tbind *:80\n")
-	config += fmt.Sprintf("\thttp-request track-sc0 int(1) table %s\n", roomTable)
+	config += fmt.Sprintf("\tstick-table type string size %v expire 1d store gpc0 peers lineq\n", len(routes))
+
+	for name := range routes {
+		config += fmt.Sprintf("\nbackend %s\n", name)
+		config += fmt.Sprintf("\tstick-table type string len 36 size 100k expire %vm store gpc1 peers lineq\n", session_duration)
+	}
+
+	config += fmt.Sprintln("\nfrontend fe_main")
+
+	if targetPort == "443" {
+		config += fmt.Sprintf("\tbind *:%s ssl crt /etc/haproxy/certs/ no-sslv3 no-tls-tickets no-tlsv10 no-tlsv11\n", targetPort)
+		config += fmt.Sprintf("\thttp-response set-header Strict-Transport-Security \"max-age=16000000; includeSubDomains; preload;\"\n")
+	} else {
+		config += fmt.Sprintf("\tbind *:%s\n", targetPort)
+	}
+
 	config += fmt.Sprintf("\thttp-request set-var(txn.has_cookie) req.cook_cnt(sessionid)\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.t2) uuid()  if !{ var(txn.has_cookie) -m int gt 0 }\n")
-	config += fmt.Sprintf("\thttp-response add-header Set-Cookie \"sessionid=%%[var(txn.t2)]; path=/\" if !{ var(txn.has_cookie) -m int gt 0 }\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.sessionid) req.cook(sessionid)\n")
-	config += fmt.Sprintf("\thttp-request track-sc1 var(txn.sessionid) table timestamps if { var(txn.has_cookie) -m int gt 0 }\n")
-	config += fmt.Sprintf("\thttp-request track-sc1 var(txn.t2) table timestamps if !{ var(txn.has_cookie) -m int gt 0 }\n")
+	config += fmt.Sprintf("\thttp-request set-var(txn.path) path\n")
+	for name, route := range routes {
+		path := route.PATH
+		config += fmt.Sprintf("\thttp-request track-sc0 str(\"%s\") table %s if { var(txn.path) -i -m beg %s }\n", name, roomTable, path)
+		config += fmt.Sprintf("\thttp-response add-header Set-Cookie \"sessionid=%%[var(txn.t2)]; path=%s\" if { var(txn.path) -i -m beg %s } !{ var(txn.has_cookie) -m int gt 0 }\n", path, route.PATH)
+		config += fmt.Sprintf("\thttp-request track-sc1 var(txn.sessionid) table %s if { var(txn.path) -i -m beg %s } { var(txn.has_cookie) -m int gt 0 }\n", name, path)
+		config += fmt.Sprintf("\thttp-request track-sc1 var(txn.t2) table %s if { var(txn.path) -i -m beg %s } !{ var(txn.has_cookie) -m int gt 0 }\n", name, path)
+		config += fmt.Sprintf("\thttp-request set-var(txn.backid) \"str('bk_'),concat('%s')\" if { var(txn.path) -i -m beg %s } \n", name, path)
+	}
+
 	config += fmt.Sprintf("\tacl has_slot sc_get_gpc1(1) eq 1\n")
 	config += fmt.Sprintf("\tacl free_slot sc_get_gpc0(0) gt 0\n")
 	config += fmt.Sprintf("\thttp-request sc-inc-gpc1(1) if free_slot !has_slot\n")
-	config += fmt.Sprintf("\tuse_backend bk_yes if has_slot\n")
+	config += fmt.Sprintf("\tuse_backend %%[var(txn.backid)] if has_slot\n")
 	config += fmt.Sprintf("\tdefault_backend bk_no\n")
-	config += fmt.Sprintln("backend bk_yes")
-	config += fmt.Sprintln("\tmode http")
-	config += fmt.Sprintln("\t#### (lineq) change to actual ip:port(s) of your service")
-	config += fmt.Sprintln("\tserver server 127.0.0.1:8889")
-	config += fmt.Sprintln("backend bk_no")
+
+	config += fmt.Sprintln("\nbackend bk_no")
 	config += fmt.Sprintln("\tmode http")
 	config += fmt.Sprintf("\tserver lineq %s:%s\n", webHost, webPort)
+
+	/*
+		for name := range routes {
+			config += fmt.Sprintf("\nbackend bk_%s\n", name)
+			config += fmt.Sprintln("\tmode http")
+			config += fmt.Sprintln("\t#### (lineq) change to actual ip:port(s) of your service")
+			config += fmt.Sprintln("\tserver server 127.0.0.1:8889")
+		}
+	*/
 
 	data := []byte(config)
 	_, err = file.Write(data)
