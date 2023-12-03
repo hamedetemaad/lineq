@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+  "strings"
 )
 
 var users = make(map[chan string]bool)
@@ -69,8 +70,8 @@ func handleSSE(w http.ResponseWriter, r *http.Request, cookie string) {
 func getQueue(cookie string) string {
   id := strings.Split(cookie, "=")[1]
   var i int
-  for i = 0; i < len(sortedEntries); i++ {
-    if sortedEntries[i] == id {
+  for i = 0; i < len(sortedEntries["path"]); i++ {
+    if sortedEntries["path"][i] == id {
       break
     }
   }

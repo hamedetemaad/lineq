@@ -1,0 +1,27 @@
+apiVersion: v1
+data:
+  lineq.cfg: |
+    {
+      "tcp_host" : "localhost",
+      "web_host" : "localhost",
+      "tcp_port" : "11111",
+      "web_port" : "8060",
+      "target_port" : "443",
+      "service_mode" : "vwr",
+      "vwr_room_table" : "room",
+      "vwr_inactivity_duration" : 5,
+      "routes": {
+        "base": {
+          "vwr_active_users": 20,
+          "path": "/"
+        },
+        "test": {
+          "vwr_active_users": 20,
+          "path": "/test"
+        }
+      }
+    }
+kind: ConfigMap
+metadata:
+  name: lineq-cm
+  namespace: lineq

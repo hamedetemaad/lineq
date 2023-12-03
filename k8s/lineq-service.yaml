@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.ap.svc: lineq
+  name: lineq-svc
+  namespace: lineq
+spec:
+  type: ClusterIP
+  ports:
+  - name: "http"
+    appProtocol: http
+    port: 8060
+    targetPort: 8060
+  selector:
+    app.ap.deploy: lineq
