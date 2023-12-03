@@ -9,6 +9,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var users = make(map[chan string]bool)
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -21,13 +23,64 @@ type WebClient struct {
 var webClients []*WebClient
 
 func initWebServer(web_host string, web_port string) {
-
-	http.Handle("/", http.FileServer(http.Dir("./static")))
+  http.HandleFunc("/", handleWebRequests)
 	http.HandleFunc("/tables", getTables)
 	http.HandleFunc("/ws", handleWebSocket)
 	addr := web_host + ":" + web_port
 	log.Println("Server is running on ", addr)
 	http.ListenAndServe(addr, nil)
+}
+
+func handleWebRequests(w http.ResponseWriter, r *http.Request) {
+  if r.Header.Get("Accept") == "text/event-stream" {
+    cookie := r.URL.Query().Get("info")
+    handleSSE(w, r, cookie)
+  } else {
+    http.FileServer(http.Dir("./static")).ServeHTTP(w, r)
+  }
+}
+
+
+func handleSSE(w http.ResponseWriter, r *http.Request, cookie string) {
+  w.Header().Set("Content-Type", "text/event-stream")
+  w.Header().Set("Cache-Control", "no-cache")
+  w.Header().Set("Connection", "keep-alive")
+  messageChan := make(chan string)
+
+  users[messageChan] = true
+
+  notify := w.(http.CloseNotifier).CloseNotify()
+  go func() {
+    <-notify
+    delete(users, messageChan)
+    close(messageChan)
+  }()
+
+  initialQueue := getQueue(cookie)
+  fmt.Fprintf(w, "data: %s\n\n", initialQueue)
+  w.(http.Flusher).Flush()
+
+  for message := range messageChan {
+    fmt.Fprintf(w, "data: %s\n\n", message)
+    w.(http.Flusher).Flush()
+  }
+}
+
+func getQueue(cookie string) string {
+  id := strings.Split(cookie, "=")[1]
+  var i int
+  for i = 0; i < len(sortedEntries); i++ {
+    if sortedEntries[i] == id {
+      break
+    }
+  }
+  return fmt.Sprintf("%d", i)
+}
+
+func broadcast() {
+  for user := range users {
+    user <- "DEC"
+  }
 }
 
 func getTables(w http.ResponseWriter, r *http.Request) {

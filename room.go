@@ -33,6 +33,7 @@ func initCache(vwr_session_duration int, routes map[string]Route, roomTable stri
 			updateClients(tableDef, newKey, keyValue)
 			cache.Set(newKey, entry)
 			sendTableUpdate(usersTable, newKey)
+      broadcast()
 		} else {
 			var roomKey []byte = entry
 			roomJson, _ := json.Marshal(&roomKey)
