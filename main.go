@@ -209,7 +209,10 @@ func generateHAProxyConfiguration(roomTable string, routes map[string]Route, ses
 	config += fmt.Sprintf("backend %s\n", roomTable)
 	config += fmt.Sprintf("\tstick-table type string size %v expire 1d store gpc0 peers lineq\n", len(routes))
 
-	for name := range routes {
+  other := "if"
+	for name, route := range routes {
+		path := route.PATH
+		other += fmt.Sprintf(" !{ var(txn.path) -i -m beg %s }", path)
 		config += fmt.Sprintf("\nbackend %s\n", name)
 		config += fmt.Sprintf("\tstick-table type string len 36 size 100k expire %vm store gpc1 peers lineq\n", session_duration)
 	}
@@ -227,6 +230,8 @@ func generateHAProxyConfiguration(roomTable string, routes map[string]Route, ses
 	config += fmt.Sprintf("\thttp-request set-var(txn.t2) uuid()  if !{ var(txn.has_cookie) -m int gt 0 }\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.sessionid) req.cook(sessionid)\n")
 	config += fmt.Sprintf("\thttp-request set-var(txn.path) path\n")
+	config += fmt.Sprintf("\tacl other %s\n", other)
+	config += fmt.Sprintf("\tuse_backend bk_default if other\n")
 	for name, route := range routes {
 		path := route.PATH
 		config += fmt.Sprintf("\thttp-request track-sc0 str(\"%s\") table %s if { var(txn.path) -i -m beg %s }\n", name, roomTable, path)
@@ -235,6 +240,7 @@ func generateHAProxyConfiguration(roomTable string, routes map[string]Route, ses
 		config += fmt.Sprintf("\thttp-request track-sc1 var(txn.t2) table %s if { var(txn.path) -i -m beg %s } !{ var(txn.has_cookie) -m int gt 0 }\n", name, path)
 		config += fmt.Sprintf("\thttp-request set-var(txn.backid) \"str('bk_'),concat('%s')\" if { var(txn.path) -i -m beg %s } \n", name, path)
 	}
+
 
 	config += fmt.Sprintf("\tacl has_slot sc_get_gpc1(1) eq 1\n")
 	config += fmt.Sprintf("\tacl free_slot sc_get_gpc0(0) gt 0\n")
