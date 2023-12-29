@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <style>*{box-sizing:border-box;margin:0;padding:0}body{line-height:1.4;font-size:1rem;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;padding:2rem;display:grid;place-items:center;min-height:100vh}.container{width:100%;max-width:800px}p{margin-top:.5rem}</style>
-    <link href='nprogress.css' rel='stylesheet' />
-    <script src='nprogress.js'></script>
+    <link href='/lineq/nprogress.css' rel='stylesheet' />
+    <script src='/lineq/nprogress.js'></script>
 </head>
 <body>
 <div class='container'>
@@ -14,13 +14,14 @@
   <div id="progress-container"></div>
     </p>
   <p>We are experiencing a high volume of traffic. Please sit tight and we will let you in soon. </p>
+  <p>Please Don't refresh. </p>
 </div>
 </body>
 <script>
     NProgress.configure({ showSpinner: false , trickle: false, parent: '#progress-container'});
     var curQueue = 0
     var step = 0
-    const eventSource = new EventSource('/?info=' + encodeURIComponent(document.cookie));
+    const eventSource = new EventSource('/lineq?info=' + encodeURIComponent(document.cookie) + '&host=' + window.location.hostname + '&path=' + window.location.pathname);
 
     eventSource.onmessage = function(event) {
         console.log('Received SSE event:', event.data);
@@ -32,10 +33,14 @@
                 location.reload(true);
             }
         } else {
+            console.log("event ", event.data)
             curQueue = event.data
             step = 1/parseFloat(curQueue)
             NProgress.start();
             document.getElementById("liners").innerHTML = curQueue
+            if (curQueue == 0) {
+                location.reload(true);
+            }
         }
     };
 
