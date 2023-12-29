@@ -1,5 +1,8 @@
 # LineQ
 implemention of Virtual Waiting Room Using HAProxy’s Peers Protocol(v2.1)
+<p>
+To install Lineq on Kubernetes, please utilize the <a href="https://github.com/hamedetemaad/lineq-operator">lineq-operator</a>
+</p>
 
 <p align="center">
   <img src="static/lineq.gif" width="700" title="lineq-vwr mode">
