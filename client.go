@@ -10,6 +10,7 @@ import (
 )
 
 type Client struct {
+	active              bool
 	conn                net.Conn
 	reader              *bufio.Reader
 	lastTableDefinition TableDefinition
@@ -538,6 +539,9 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 
 		for i := 0; i < len(tableDefinition.DataTypes); i++ {
 			for i := 0; i < len(peers); i++ {
+				if !peers[i].active {
+					continue
+				}
 				if locTable, exists := peers[i].tables[name]; exists {
 					if locEnt, exists := locTable.entries[keyEnc]; exists {
 						dType := tableDefinition.DataTypes[i]
@@ -705,7 +709,9 @@ func (client *Client) sendUpdate(tableDef []byte, entryDef []byte, local bool) {
 		client.conn.Write(message)
 	} else {
 		for i := 0; i < len(peers); i++ {
-			peers[i].conn.Write(message)
+			if peers[i].active {
+				peers[i].conn.Write(message)
+			}
 		}
 	}
 }
@@ -717,7 +723,13 @@ func (client *Client) updatePeers(table TableDefinition, keyType int, keyValue i
 	client.sendUpdate(tableDef, entryDef, false)
 }
 
+func (client *Client) close() {
+	client.active = false
+	client.conn.Close()
+}
+
 func (client *Client) handleRequests() {
+	defer client.close()
 	client.buffer = make([]byte, 0)
 	client.pointer = 0
 	for {
