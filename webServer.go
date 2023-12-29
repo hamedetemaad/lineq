@@ -1,13 +1,15 @@
 package main
 
 import (
+	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
+	"strings"
+
 	"github.com/gorilla/websocket"
-  "strings"
 )
 
 var users = make(map[chan string]bool)
@@ -17,6 +19,26 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+type ResponseBody struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+type ConfigResponse struct {
+	Status               string `json:"status"`
+	Message              string `json:"message"`
+	RoomTableName        string `json:"lineq_room_table"`
+	UserTableName        string `json:"lineq_user_table"`
+	LineqSessionDuration int    `json:"lineq_session_duration"`
+}
+
+type RequestBody struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	Host        string `json:"host"`
+	ActiveUsers int    `json:"activeUsers"`
+}
+
 type WebClient struct {
 	conn *websocket.Conn
 }
@@ -24,8 +46,10 @@ type WebClient struct {
 var webClients []*WebClient
 
 func initWebServer(web_host string, web_port string) {
-  http.HandleFunc("/", handleWebRequests)
+	http.HandleFunc("/", handleWebRequests)
 	http.HandleFunc("/tables", getTables)
+	http.HandleFunc("/getConfig", getConfig)
+	http.HandleFunc("/create", createTables)
 	http.HandleFunc("/ws", handleWebSocket)
 	addr := web_host + ":" + web_port
 	log.Println("Server is running on ", addr)
@@ -33,55 +57,76 @@ func initWebServer(web_host string, web_port string) {
 }
 
 func handleWebRequests(w http.ResponseWriter, r *http.Request) {
-  if r.Header.Get("Accept") == "text/event-stream" {
-    cookie := r.URL.Query().Get("info")
-    handleSSE(w, r, cookie)
-  } else {
-    http.FileServer(http.Dir("./static")).ServeHTTP(w, r)
-  }
+	if r.Header.Get("Accept") == "text/event-stream" {
+		cookie := r.URL.Query().Get("info")
+		hostname := r.URL.Query().Get("host")
+		pathname := r.URL.Query().Get("path")
+		log.Println(cookie, hostname, pathname)
+		handleSSE(w, r, cookie, hostname, pathname)
+	} else if strings.Contains(r.URL.Path, "/lineq/") {
+		parts := strings.SplitN(r.URL.Path, "/lineq/", 2)
+		if len(parts) > 1 {
+			newPath := "/static/lineq/" + parts[1]
+			http.ServeFile(w, r, "."+newPath)
+			return
+		}
+		http.ServeFile(w, r, "./static/index.html")
+	} else {
+		http.ServeFile(w, r, "./static/index.html")
+	}
 }
 
+func handleSSE(w http.ResponseWriter, r *http.Request, cookie string, hostname string, pathname string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	messageChan := make(chan string)
 
-func handleSSE(w http.ResponseWriter, r *http.Request, cookie string) {
-  w.Header().Set("Content-Type", "text/event-stream")
-  w.Header().Set("Cache-Control", "no-cache")
-  w.Header().Set("Connection", "keep-alive")
-  messageChan := make(chan string)
+	users[messageChan] = true
 
-  users[messageChan] = true
+	notify := w.(http.CloseNotifier).CloseNotify()
+	go func() {
+		<-notify
+		delete(users, messageChan)
+		close(messageChan)
+	}()
 
-  notify := w.(http.CloseNotifier).CloseNotify()
-  go func() {
-    <-notify
-    delete(users, messageChan)
-    close(messageChan)
-  }()
+	initialQueue := getQueue(cookie, hostname, pathname)
+	fmt.Fprintf(w, "data: %s\n\n", initialQueue)
+	w.(http.Flusher).Flush()
 
-  initialQueue := getQueue(cookie)
-  fmt.Fprintf(w, "data: %s\n\n", initialQueue)
-  w.(http.Flusher).Flush()
-
-  for message := range messageChan {
-    fmt.Fprintf(w, "data: %s\n\n", message)
-    w.(http.Flusher).Flush()
-  }
+	for message := range messageChan {
+		fmt.Fprintf(w, "data: %s\n\n", message)
+		w.(http.Flusher).Flush()
+	}
 }
 
-func getQueue(cookie string) string {
-  id := strings.Split(cookie, "=")[1]
-  var i int
-  for i = 0; i < len(sortedEntries["path"]); i++ {
-    if sortedEntries["path"][i] == id {
-      break
-    }
-  }
-  return fmt.Sprintf("%d", i)
+func getQueue(cookie string, hostname string, pathname string) string {
+
+	domain := strings.Replace(hostname, ".", "_", -1)
+	path := strings.Replace(pathname, "/", "_", -1)
+	name := fmt.Sprintf("%s%s", domain, path)
+
+	sid := strings.Split(cookie, "=")[1]
+	id := fmt.Sprintf("%s@%s", sid, name)
+	log.Println(name, id)
+	key := []byte(id)
+	jsonKey, _ := json.Marshal(&key)
+	keyEnc := b64.StdEncoding.EncodeToString(jsonKey)
+	j := -1
+	for i := 0; i < len(sortedEntries[name]); i++ {
+		if sortedEntries[name][i] == keyEnc {
+			j = i
+			break
+		}
+	}
+	return fmt.Sprintf("%d", j+1)
 }
 
 func broadcast() {
-  for user := range users {
-    user <- "DEC"
-  }
+	for user := range users {
+		user <- "DEC"
+	}
 }
 
 func getTables(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +136,58 @@ func getTables(w http.ResponseWriter, r *http.Request) {
 	_, err := w.Write(messageJSON)
 	if err != nil {
 		log.Println("Error writing JSON response:", err)
+	}
+}
+
+func getConfig(w http.ResponseWriter, r *http.Request) {
+	response := ConfigResponse{
+		Status:               "OK",
+		Message:              "Config Retrieved Successfully",
+		RoomTableName:        service_vwr_room_table,
+		UserTableName:        service_vwr_user_table,
+		LineqSessionDuration: service_vwr_session_duration,
+	}
+
+	jsonResponse, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	w.Write(jsonResponse)
+}
+
+func createTables(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var requestBody RequestBody
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Error decoding JSON request body", http.StatusBadRequest)
+		return
+	}
+
+	name := requestBody.Name
+	path := requestBody.Path
+	host := requestBody.Host
+	activeUsers := requestBody.ActiveUsers
+	updateRoomTable(name, path, host, activeUsers)
+
+	response := ResponseBody{
+		Status:  "success",
+		Message: fmt.Sprintf("Tables Updated"),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		http.Error(w, "Error encoding JSON response", http.StatusInternalServerError)
+		return
 	}
 }
 

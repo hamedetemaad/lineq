@@ -14,36 +14,35 @@ import (
 
 var cache *bigcache.BigCache
 
-func initCache(vwr_session_duration int, routes map[string]Route, roomTable string) {
-	vwr_total_users := 0
-	for _, route := range routes {
-		vwr_total_users += route.TOTAL_ACTIVE_USERS
-	}
+func initCache() {
+	vwr_total_users := 100000
 
 	onRemove := func(key string, entry []byte) {
 		usersTable := string(entry)
 
-		delete(tables[usersTable].entries, key)
+		delete(tables[service_vwr_user_table].entries, key)
 		if len(sortedEntries[usersTable]) > 0 {
 			newKey := sortedEntries[usersTable][0]
-			tables[usersTable].entries[newKey].Values[GPC1][0] = 1
+			tables[service_vwr_user_table].entries[newKey].Values[GPC1][0] = 1
 			sortedEntries[usersTable] = sortedEntries[usersTable][1:]
-			tableDef := tables[usersTable].definition
-			keyValue := tables[usersTable].entries[newKey].Key
+			tableDef := tables[service_vwr_user_table].definition
+			keyValue := tables[service_vwr_user_table].entries[newKey].Key
 			updateClients(tableDef, newKey, keyValue)
 			cache.Set(newKey, entry)
-			sendTableUpdate(usersTable, newKey)
-      broadcast()
+			sendTableUpdate(service_vwr_user_table, newKey)
+			broadcast()
 		} else {
 			var roomKey []byte = entry
 			roomJson, _ := json.Marshal(&roomKey)
 			roomEnc := b64.StdEncoding.EncodeToString(roomJson)
-			curVal := tables[roomTable].entries[roomEnc].Values[GPC0][0]
+			curVal := tables[service_vwr_room_table].entries[roomEnc].Values[GPC0][0]
+
 			if curVal < routes[usersTable].TOTAL_ACTIVE_USERS {
-				tables[roomTable].entries[roomEnc].Values[GPC0][0] += 1
-				tableDef := tables[roomTable].definition
+				tables[service_vwr_room_table].entries[roomEnc].Values[GPC0][0] += 1
+				tableDef := tables[service_vwr_room_table].definition
+
 				updateClients(tableDef, roomEnc, usersTable)
-				sendTableUpdate(roomTable, roomEnc)
+				sendTableUpdate(service_vwr_room_table, roomEnc)
 			}
 		}
 	}
@@ -53,7 +52,7 @@ func initCache(vwr_session_duration int, routes map[string]Route, roomTable stri
 		Shards: 1024,
 
 		// time after which entry can be evicted
-		LifeWindow: time.Duration(vwr_session_duration) * time.Minute,
+		LifeWindow: time.Duration(service_vwr_session_duration) * time.Minute,
 
 		// Interval between removing expired entries (clean up).
 		// If set to <= 0 then no action is performed.
@@ -211,6 +210,8 @@ func updateClients(tdef TableDefinition, keyEnc string, keyValue interface{}) {
 	tableDef := createTableDefinition(tdef)
 	entryDef := createEntryUpdate(tdef, tdef.KeyType, keyValue, keyEnc)
 	for i := 0; i < len(peers); i++ {
-		peers[i].sendUpdate(tableDef, entryDef, true)
+		if peers[i].active {
+			peers[i].sendUpdate(tableDef, entryDef, true)
+		}
 	}
 }

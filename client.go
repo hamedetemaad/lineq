@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 	"net"
+	"strings"
 )
 
 type Client struct {
@@ -19,7 +20,6 @@ type Client struct {
 	mode                string
 	tables              map[string]Table
 	roomTable           string
-	usersTable          map[string]Route
 	skip                bool
 }
 
@@ -33,10 +33,9 @@ func (client *Client) sendStatus(remoteId string) {
 	client.conn.Write([]byte(SUCCEEDED + "\n"))
 }
 
-func (client *Client) initConnection(mode string, vwr_session_duration int, roomTable string, routes map[string]Route) {
+func (client *Client) initConnection(mode string) {
 	client.mode = mode
-	client.roomTable = roomTable
-	client.usersTable = routes
+	client.roomTable = service_vwr_room_table
 	message, err := client.reader.ReadString('\n')
 	if err != nil {
 		client.conn.Close()
@@ -487,27 +486,29 @@ func (client *Client) updateTable(entryUpdate EntryUpdate) string {
 	if client.mode == "agg" {
 		tables[name] = table
 	} else if client.mode == "vwr" {
-		if _, uTable := client.usersTable[name]; uTable {
+		if name == service_vwr_user_table {
+			parts := strings.Split(string(key), "@")
+			domainPath := parts[1]
 			curStat := entry.Values[GPC1][0]
 			if curStat == 1 {
 				prevEntry, exists := tables[name].entries[keyEnc]
 				if !exists || (prevEntry.Values[GPC1][0] == 0) {
-					var roomKey []byte = []byte(name)
+					var roomKey []byte = []byte(domainPath)
 					roomJson, _ := json.Marshal(&roomKey)
 					roomEnc := b64.StdEncoding.EncodeToString(roomJson)
 
 					tables[name].entries[keyEnc] = entry
 					tables[client.roomTable].entries[roomEnc].Values[GPC0][0] -= 1
-					client.updatePeers(tables[client.roomTable].definition, tables[client.roomTable].definition.KeyType, name, roomEnc)
-					cache.Set(keyEnc, []byte(name))
+					client.updatePeers(tables[client.roomTable].definition, tables[client.roomTable].definition.KeyType, domainPath, roomEnc)
+					cache.Set(keyEnc, []byte(domainPath))
 					sendTableUpdate(client.roomTable, roomEnc)
 				} else {
-					cache.Set(keyEnc, []byte(name))
+					cache.Set(keyEnc, []byte(domainPath))
 				}
 			} else {
 				if _, exists := tables[name].entries[keyEnc]; !exists {
 					tables[name].entries[keyEnc] = entry
-					sortedEntries[name] = append(sortedEntries[name], keyEnc)
+					sortedEntries[domainPath] = append(sortedEntries[domainPath], keyEnc)
 				}
 			}
 		}
